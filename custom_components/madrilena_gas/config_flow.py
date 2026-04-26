@@ -226,7 +226,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # entry-point. Carries the entry being reauth'd, the typed
         # credentials, and the opaque login context that bridges
         # ``begin_login`` → ``submit_otp``.
-        self._reauth_entry_id: str | None = None
+        self._madrilena_reauth_entry_id: str | None = None
         self._reauth_dni: str = ""
         self._reauth_password: str = ""
         self._login_ctx: Any = None
@@ -332,7 +332,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if entry_id:
             existing = self.hass.config_entries.async_get_entry(entry_id)
             if existing and existing.options.get(CONF_AUTOPILOT_ENABLED):
-                self._reauth_entry_id = entry_id
+                self._madrilena_reauth_entry_id = entry_id
                 return await self.async_step_reauth_confirm()
         return self.async_abort(reason="reauth_not_supported")
 
@@ -353,9 +353,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
         from .secrets_store import CredentialsStore
 
-        if not self._reauth_entry_id:
+        if not self._madrilena_reauth_entry_id:
             return self.async_abort(reason="reauth_not_supported")
-        creds = CredentialsStore(self.hass, self._reauth_entry_id)
+        creds = CredentialsStore(self.hass, self._madrilena_reauth_entry_id)
         await creds.async_load()
 
         if user_input is not None:
@@ -384,11 +384,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         payload = self._login_ctx.session_payload
                         await creds.async_save(dni=dni, password=password)
                         session_store = SessionStore(
-                            self.hass, self._reauth_entry_id,
+                            self.hass, self._madrilena_reauth_entry_id,
                         )
                         await session_store.async_save_payload(payload.to_dict())
                         entry = self.hass.config_entries.async_get_entry(
-                            self._reauth_entry_id,
+                            self._madrilena_reauth_entry_id,
                         )
                         if entry is None:
                             return self.async_abort(reason="reauth_not_supported")
@@ -430,7 +430,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
         from .secrets_store import SessionStore
 
-        if not self._reauth_entry_id or self._login_ctx is None:
+        if not self._madrilena_reauth_entry_id or self._login_ctx is None:
             return self.async_abort(reason="reauth_not_supported")
 
         if user_input is not None:
@@ -444,7 +444,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     async with aiohttp.ClientSession() as http:
                         client = MadrilenaClient(http)
                         payload = await client.submit_otp(self._login_ctx, otp)
-                    session_store = SessionStore(self.hass, self._reauth_entry_id)
+                    session_store = SessionStore(self.hass, self._madrilena_reauth_entry_id)
                     await session_store.async_save_payload(
                         {
                             "cookies": payload.cookies,
@@ -453,7 +453,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         },
                     )
                     entry = self.hass.config_entries.async_get_entry(
-                        self._reauth_entry_id,
+                        self._madrilena_reauth_entry_id,
                     )
                     if entry is None:
                         return self.async_abort(reason="reauth_not_supported")
