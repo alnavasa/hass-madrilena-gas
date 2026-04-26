@@ -126,11 +126,53 @@ BOOKMARKLET_PAGE_URL_PREFIX = "/api/madrilena_gas/bookmarklet"
 MAX_INGEST_BYTES = 4 * 1024 * 1024
 
 # ---------------------------------------------------------------------
+# Autopilot mode (v0.2.0 — scaffold, NOT functional yet)
+# ---------------------------------------------------------------------
+
+#: Opt-in toggle in OptionsFlow. When True, the auto-fetch coordinator
+#: starts on entry setup, polls /consumos every ``AUTOPILOT_POLL_INTERVAL``,
+#: and the bookmarklet flow becomes redundant (still works in parallel).
+#: When False (default) the integration behaves exactly as v0.1.x.
+CONF_AUTOPILOT_ENABLED = "autopilot_enabled"
+
+#: User's portal credentials. NEVER stored in ``entry.data`` — they live
+#: in a separate per-entry HA Store (see ``secrets_store.py``) so they
+#: don't surface in diagnostics dumps or config-entry exports.
+CONF_DNI = "dni"
+CONF_PASSWORD = "password"  # noqa: S105
+CONF_OTP = "otp"
+
+#: Re-fetch cadence. Empirically the Madrileña Laravel session has a
+#: sliding TTL ≈ 80–160 min idle (probe 2026-04-26 survived 7.34h
+#: with 80-min polls, died at first 160-min poll). 40 min sits well
+#: inside the safe band so the cookie never lapses while HA is online.
+AUTOPILOT_POLL_INTERVAL = timedelta(minutes=40)
+
+#: After a transient HTTP error, back off this long before retrying.
+#: Avoids hammering the portal during outages.
+AUTOPILOT_BACKOFF_INTERVAL = timedelta(minutes=10)
+
+#: Public base URL of the Oficina Virtual. Used by the autopilot client
+#: only — the bookmarklet flow doesn't need it (the user's browser
+#: already sits on the right origin).
+MADRILENA_PORTAL_BASE = "https://ov.madrilena.es"
+
+# ---------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------
 
 STORAGE_KEY_PREFIX = DOMAIN
 STORAGE_VERSION = 1
+
+#: Per-entry on-disk store for the user's portal credentials. Separate
+#: file from the readings so a diagnostics dump of the readings store
+#: never leaks the DNI/password.
+STORAGE_SECRETS_KEY_PREFIX = f"{DOMAIN}.secrets"
+
+#: Per-entry on-disk store for the Laravel session cookies + CSRF token
+#: used by the autopilot client. Cleared on re-auth and when the user
+#: disables autopilot.
+STORAGE_SESSION_KEY_PREFIX = f"{DOMAIN}.session"
 
 #: Hard cap on stored readings per entry. Bimonthly readings = ~6/year,
 #: so 1000 covers 160+ years. Set generous; readings are tiny.

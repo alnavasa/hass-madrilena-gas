@@ -38,6 +38,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
+from .auto_coordinator import AutoFetchCoordinator
 from .bookmarklet import (
     bookmarklet_page_url,
     build_bookmarklet,
@@ -45,6 +46,7 @@ from .bookmarklet import (
 )
 from .bookmarklet_view import MadrilenaGasBookmarkletPageView
 from .const import (
+    CONF_AUTOPILOT_ENABLED,
     CONF_HA_URL,
     CONF_METER_ID,
     CONF_NAME,
@@ -54,6 +56,7 @@ from .const import (
 )
 from .coordinator import MadrilenaGasCoordinator
 from .ingest import MadrilenaGasIngestView
+from .secrets_store import CredentialsStore, SessionStore
 from .store import ReadingStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -183,10 +186,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # state until the user clicks the bookmarklet.
     await coordinator.async_refresh()
 
+    autopilot: AutoFetchCoordinator | None = None
+    autopilot_enabled = bool(entry.options.get(CONF_AUTOPILOT_ENABLED, False))
+    session_store = SessionStore(hass, entry.entry_id)
+    if autopilot_enabled:
+        await session_store.async_load()
+        autopilot = AutoFetchCoordinator(
+            hass, entry, coordinator, store, session_store,
+        )
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = {
         "store": store,
         "coordinator": coordinator,
+        "autopilot": autopilot,
+        "session_store": session_store,
         "name": entry.data.get(CONF_NAME) or entry.title or "",
         "token": entry.data.get(CONF_TOKEN, ""),
         # Per-entry asyncio.Lock serialising the read-modify-write
@@ -207,6 +221,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # reboots don't re-spam the notification.
     if not entry.data.get(CONF_METER_ID):
         await _publish_bookmarklet_notification(hass, entry)
+
+    if autopilot is not None:
+        creds = CredentialsStore(hass, entry.entry_id)
+        await creds.async_load()
+        if not creds.has_credentials:
+            # Autopilot was just enabled but the user hasn't entered
+            # credentials yet (somehow bypassed OptionsFlow) — surface
+            # a reauth prompt so they can do it now.
+            entry.async_start_reauth(hass)
+        elif not session_store.has_session:
+            # Credentials exist, no session → start reauth so the user
+            # gets a fresh OTP at the moment they click "Reconfigurar".
+            entry.async_start_reauth(hass)
+        else:
+            autopilot.start()
 
     return True
 
@@ -233,6 +262,10 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    cache = hass.data.get(DOMAIN, {}).get(entry.entry_id) or {}
+    autopilot: AutoFetchCoordinator | None = cache.get("autopilot")
+    if autopilot is not None:
+        await autopilot.async_stop()
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
@@ -240,9 +273,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Wipe the persisted readings file when the entry is deleted."""
-    store = ReadingStore(hass, entry.entry_id)
-    try:
-        await store.async_clear()
-    except Exception:
-        _LOGGER.exception("[%s] Failed to clear store on entry removal", entry.entry_id)
+    """Wipe persisted readings and autopilot stores when the entry is deleted."""
+    for cleaner in (
+        ReadingStore(hass, entry.entry_id).async_clear,
+        CredentialsStore(hass, entry.entry_id).async_clear,
+        SessionStore(hass, entry.entry_id).async_clear,
+    ):
+        try:
+            await cleaner()
+        except Exception:
+            _LOGGER.exception("[%s] Failed cleanup on entry removal", entry.entry_id)
