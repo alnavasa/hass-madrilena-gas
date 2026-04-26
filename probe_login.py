@@ -89,14 +89,20 @@ class _FormScraper(HTMLParser):
             }
             self.forms.append(self._current_form)
         elif tag in ("input", "select", "textarea") and self._current_form is not None:
+            name = attr.get("name") or "(unnamed)"
+            input_type = attr.get("type") or "(default)"
+            # Capture value ONLY for CSRF tokens (`_token`, `csrf_token`,
+            # `__RequestVerificationToken`). Those are random server-side
+            # strings, not PII. Everything else stays redacted.
+            value = None
+            if name in ("_token", "csrf_token", "__RequestVerificationToken"):
+                value = attr.get("value")
             self._current_form["inputs"].append(
                 {
                     "tag": tag,
-                    "name": attr.get("name") or "(unnamed)",
-                    "type": attr.get("type") or "(default)",
-                    # We do NOT capture the `value` attribute even if
-                    # present — it could leak the user's email if the
-                    # page pre-fills it, etc.
+                    "name": name,
+                    "type": input_type,
+                    "value": value,
                 },
             )
 
@@ -253,13 +259,19 @@ def main() -> int:
     # Laravel patterns: _token, username/email, password.
     target_form = login_forms[0]
     fields: dict[str, str] = {}
+    csrf_from_form: str | None = None
     for inp in target_form["inputs"]:
         n = inp["name"]
-        if n in ("_token",):
-            # Pull the CSRF token from a cookie if available.
-            csrf = next((c.value for c in jar if c.name == "XSRF-TOKEN"), "")
-            if csrf:
-                fields[n] = parse.unquote(csrf)
+        if n in ("_token", "csrf_token", "__RequestVerificationToken"):
+            # Prefer the form's hidden value (the raw session token).
+            # Fall back to the URL-decoded XSRF-TOKEN cookie.
+            v = inp.get("value")
+            if not v:
+                csrf_cookie = next((c.value for c in jar if c.name == "XSRF-TOKEN"), "")
+                v = parse.unquote(csrf_cookie) if csrf_cookie else ""
+            if v:
+                fields[n] = v
+                csrf_from_form = v
         elif inp["type"] == "password" or n.lower() in ("password", "pwd"):
             fields[n] = password
         elif n.lower() in ("username", "user", "email", "dni", "nif", "login"):
@@ -282,90 +294,150 @@ def main() -> int:
 
     print(f"POSTing to:        {post_url}")
     print(f"Field names sent:  {sorted(fields.keys())}  (values redacted)")
+    print(f"_token source:     {'form hidden' if csrf_from_form else 'cookie fallback'}")
+
+    # Headers Laravel commonly checks: Origin/Referer (CSRF), and the
+    # X-XSRF-TOKEN header (decoded cookie value) as a backup CSRF channel.
+    xsrf_cookie = next((c.value for c in jar if c.name == "XSRF-TOKEN"), "")
+    post_headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": PORTAL_BASE,
+        "Referer": PORTAL_BASE + "/login",
+    }
+    if xsrf_cookie:
+        post_headers["X-XSRF-TOKEN"] = parse.unquote(xsrf_cookie)
 
     status, path, html, _ = _open(
         opener,
         post_url,
         data=body,
         method="POST",
-        extra_headers={"Content-Type": "application/x-www-form-urlencoded"},
+        extra_headers=post_headers,
     )
     print(f"Final path:        {path}")
     print(f"Status code:       {status}")
     _print_cookie_names(jar, "Cookies after POST /login")
-    otp_forms = _scrape_forms(html)
-    _print_forms(otp_forms, "Forms after POST /login (look for the OTP form)")
+    post_login_forms = _scrape_forms(html)
+    _print_forms(post_login_forms, "Forms after POST /login (look for the OTP form)")
+
+    # Filter out the always-present logout form so we don't accidentally
+    # log ourselves out trying to "submit the OTP".
+    otp_forms = [
+        f for f in post_login_forms
+        if "logout" not in (f.get("action") or "").lower()
+        and (f.get("id") or "").lower() != "logout-form"
+    ]
+
+    # If the portal redirected us straight to a dashboard path
+    # (`/situacion-global`, `/home`, `/perfil`, ...), MFA was skipped
+    # this time (trusted IP / cookie). Skip step 4 entirely.
+    no_mfa = path != "/login" and not path.startswith("/otp") and not path.startswith("/2fa")
 
     # ------------------------------------------------------------------
-    # Step 4 — POST OTP.
+    # Step 4 — POST OTP (only if MFA was actually triggered).
     # ------------------------------------------------------------------
     _hr("STEP 4 — POST OTP")
-    if not otp_forms:
-        print("⚠️  No forms on the post-login page. The flow may have a")
-        print("    different shape (e.g. JSON XHR). Report what you see in")
-        print("    the browser DevTools Network tab.")
+    if no_mfa:
+        print(f"✅ No OTP needed — already logged in (redirected to {path}).")
+        print("   The portal trusted this IP/cookie. Skipping OTP step.")
+    elif not otp_forms:
+        print("⚠️  No OTP form on the post-login page (only the logout form")
+        print("    was visible). Either credentials were wrong, or the OTP")
+        print("    flow uses JSON XHR. Check the browser DevTools Network")
+        print("    tab to see what the form submit hits.")
         return 1
-
-    print("Check your email for the OTP. Wait until it arrives.")
-    otp = getpass.getpass("  OTP code         : ")
-
-    target_form = otp_forms[0]
-    otp_fields: dict[str, str] = {}
-    for inp in target_form["inputs"]:
-        n = inp["name"]
-        if n in ("_token",):
-            csrf = next((c.value for c in jar if c.name == "XSRF-TOKEN"), "")
-            if csrf:
-                otp_fields[n] = parse.unquote(csrf)
-        elif n.lower() in ("otp", "code", "codigo", "verification_code"):
-            otp_fields[n] = otp
-    if not any(v == otp for v in otp_fields.values()):
-        # Fall back: blast the OTP into every text-like input.
-        for inp in target_form["inputs"]:
-            if inp["type"] in ("text", "number", "tel"):
-                otp_fields[inp["name"]] = otp
-                break
-
-    body = parse.urlencode(otp_fields).encode()
-    action = target_form["action"]
-    if action.startswith("/"):
-        post_url = PORTAL_BASE + action
-    elif action.startswith("http"):
-        post_url = action
     else:
-        post_url = PORTAL_BASE + "/login"
+        print("Check your email for the OTP. Wait until it arrives.")
+        otp = getpass.getpass("  OTP code         : ")
 
-    print(f"POSTing to:        {post_url}")
-    print(f"Field names sent:  {sorted(otp_fields.keys())}  (values redacted)")
+        target_form = otp_forms[0]
+        otp_fields: dict[str, str] = {}
+        for inp in target_form["inputs"]:
+            n = inp["name"]
+            if n in ("_token", "csrf_token", "__RequestVerificationToken"):
+                v = inp.get("value")
+                if not v:
+                    csrf_cookie = next((c.value for c in jar if c.name == "XSRF-TOKEN"), "")
+                    v = parse.unquote(csrf_cookie) if csrf_cookie else ""
+                if v:
+                    otp_fields[n] = v
+            elif n.lower() in ("otp", "code", "codigo", "verification_code"):
+                otp_fields[n] = otp
+        if not any(v == otp for v in otp_fields.values()):
+            # Fall back: blast the OTP into every text-like input.
+            for inp in target_form["inputs"]:
+                if inp["type"] in ("text", "number", "tel"):
+                    otp_fields[inp["name"]] = otp
+                    break
 
-    status, path, html, _ = _open(
-        opener,
-        post_url,
-        data=body,
-        method="POST",
-        extra_headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    print(f"Final path:        {path}")
-    print(f"Status code:       {status}")
-    _print_cookie_names(jar, "Cookies after POST OTP")
+        body = parse.urlencode(otp_fields).encode()
+        action = target_form["action"]
+        if action.startswith("/"):
+            post_url = PORTAL_BASE + action
+        elif action.startswith("http"):
+            post_url = action
+        else:
+            post_url = PORTAL_BASE + "/login"
 
-    # ------------------------------------------------------------------
-    # Step 5 — GET /consumos to confirm we're authenticated.
-    # ------------------------------------------------------------------
-    _hr("STEP 5 — GET /consumos (authenticated read)")
-    status, path, html, _ = _open(opener, PORTAL_BASE + "/consumos")
-    print(f"Final path:        {path}")
-    print(f"Status code:       {status}")
-    rows = _count_table_rows(html)
-    print(f"Total <tr> in body: {rows}  (data NOT printed)")
-    _print_forms(_scrape_forms(html), "Forms on /consumos")
+        print(f"POSTing to:        {post_url}")
+        print(f"Field names sent:  {sorted(otp_fields.keys())}  (values redacted)")
 
-    if path == "/login":
-        print(
-            "\n⚠️  Got redirected back to /login — the OTP submission"
-            " probably failed. Check the previous step's status code.",
+        xsrf_cookie = next((c.value for c in jar if c.name == "XSRF-TOKEN"), "")
+        otp_headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": PORTAL_BASE,
+            "Referer": PORTAL_BASE + "/login",
+        }
+        if xsrf_cookie:
+            otp_headers["X-XSRF-TOKEN"] = parse.unquote(xsrf_cookie)
+
+        status, path, html, _ = _open(
+            opener,
+            post_url,
+            data=body,
+            method="POST",
+            extra_headers=otp_headers,
         )
-        return 1
+        print(f"Final path:        {path}")
+        print(f"Status code:       {status}")
+        _print_cookie_names(jar, "Cookies after POST OTP")
+
+    # ------------------------------------------------------------------
+    # Step 5 — Probe authenticated read endpoints. Try several
+    # candidate paths until we find the one that actually returns
+    # a consumption-history table (the bookmarklet hits /consumos in
+    # the browser, but the underlying URL might be different).
+    # ------------------------------------------------------------------
+    _hr("STEP 5 — Probe candidate consumption endpoints")
+    candidates = (
+        "/consumos",
+        "/lecturas",
+        "/historico",
+        "/historico-lecturas",
+        "/historicoLecturas",
+        "/cliente/consumos",
+        "/cliente/lecturas",
+        "/facturas",
+        "/situacion-global",
+    )
+    found_consumo: str | None = None
+    for cand in candidates:
+        status, path, html, _ = _open(opener, PORTAL_BASE + cand)
+        rows = _count_table_rows(html)
+        forms = _scrape_forms(html)
+        login_redirect = path == "/login"
+        marker = " ← redirect to /login" if login_redirect else (
+            f" rows={rows}" if rows else ""
+        )
+        print(f"  GET {cand:24s} → {status} (final: {path}){marker}")
+        if not login_redirect and rows >= 5 and found_consumo is None:
+            found_consumo = cand
+    if found_consumo:
+        print(f"\n✅ Likely consumption endpoint: {found_consumo}")
+    else:
+        print("\n⚠️  No candidate returned a non-trivial table.")
+        print("    The readings endpoint may be a JSON XHR or have a")
+        print("    different URL — check browser DevTools Network tab.")
 
     # ------------------------------------------------------------------
     # Step 6 — sanity GET of a likely "still alive" endpoint.

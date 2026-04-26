@@ -48,7 +48,7 @@ from .madrilena_client import (
     SessionPayload,
 )
 from .parser import parse_meter_id, parse_pages
-from .secrets_store import SessionStore
+from .secrets_store import CredentialsStore, SessionStore
 from .store import ReadingStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -181,15 +181,7 @@ class AutoFetchCoordinator:
         if self._client is None:
             return
 
-        if not self.session_store.has_session:
-            # No persisted session → user must complete reauth before
-            # autopilot can fetch anything. Nothing else we can do
-            # without prompting; surface a reauth issue.
-            raise SessionExpired("No persisted session")
-
-        payload = SessionPayload(**self.session_store.payload)
-        if not await self._client.is_session_alive(payload):
-            raise SessionExpired("Cookie no longer valid")
+        payload = await self._ensure_live_session()
 
         pages_html = await self._client.fetch_consumos_pages(payload)
         if not pages_html:
@@ -216,6 +208,53 @@ class AutoFetchCoordinator:
             "[%s] Autopilot tick OK — pages=%d total=%d new=%d",
             self.entry.entry_id, len(pages_html), len(readings), new_count,
         )
+
+    # ------------------------------------------------------------------
+    # Session lifecycle (silent self-heal + reauth fallback)
+    # ------------------------------------------------------------------
+
+    async def _ensure_live_session(self) -> SessionPayload:
+        """Return a known-good session, doing a silent re-login if needed.
+
+        Order of preference:
+          1. Cached session payload — if still alive, use it.
+          2. Stored credentials — try ``begin_login``; if the portal
+             trusts this device (no MFA), persist the new session and
+             continue without bothering the user.
+          3. Otherwise raise :class:`SessionExpired` so ``_run`` surfaces
+             a reauth notification.
+        """
+        if self._client is None:
+            raise SessionExpired("Client not initialised")
+
+        # 1. Try the cached cookie.
+        if self.session_store.has_session:
+            payload = SessionPayload(**self.session_store.payload)
+            if await self._client.is_session_alive(payload):
+                return payload
+            _LOGGER.info(
+                "[%s] Autopilot session dead — attempting silent re-login",
+                self.entry.entry_id,
+            )
+            await self.session_store.async_clear()
+
+        # 2. Silent re-login from stored credentials.
+        creds = CredentialsStore(self.hass, self.entry.entry_id)
+        await creds.async_load()
+        if not creds.has_credentials:
+            raise SessionExpired("No credentials stored — user must re-auth")
+
+        ctx = await self._client.begin_login(creds.dni, creds.password)
+        if ctx.needs_otp:
+            # We can't read the user's email — bail to reauth UI.
+            raise SessionExpired("MFA required — user must complete reauth")
+        new_payload = ctx.session_payload
+        await self.session_store.async_save_payload(new_payload.to_dict())
+        _LOGGER.info(
+            "[%s] Autopilot silently re-logged in (no MFA needed)",
+            self.entry.entry_id,
+        )
+        return new_payload
 
     # ------------------------------------------------------------------
     # Re-auth glue

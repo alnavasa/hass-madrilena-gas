@@ -369,13 +369,34 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
             import aiohttp
+
+            from .secrets_store import SessionStore
+
             errors: dict[str, str] = {}
             try:
                 async with aiohttp.ClientSession() as http:
                     client = MadrilenaClient(http)
                     self._login_ctx = await client.begin_login(dni, password)
-                # Persist the credentials so the autopilot can re-login
-                # without prompting next time.
+                    # If the portal trusts this device we already have
+                    # a usable session — persist it and skip the OTP
+                    # step entirely.
+                    if not self._login_ctx.needs_otp:
+                        payload = self._login_ctx.session_payload
+                        await creds.async_save(dni=dni, password=password)
+                        session_store = SessionStore(
+                            self.hass, self._reauth_entry_id,
+                        )
+                        await session_store.async_save_payload(payload.to_dict())
+                        entry = self.hass.config_entries.async_get_entry(
+                            self._reauth_entry_id,
+                        )
+                        if entry is None:
+                            return self.async_abort(reason="reauth_not_supported")
+                        return self.async_update_reload_and_abort(
+                            entry, reason="reauth_successful",
+                        )
+                # MFA required — keep the credentials around and route
+                # to the OTP step.
                 await creds.async_save(dni=dni, password=password)
                 self._reauth_dni = dni
                 self._reauth_password = password
