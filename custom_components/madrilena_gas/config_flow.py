@@ -92,9 +92,18 @@ def _people_field(default: int = 1) -> dict:
 
 
 def _climate_field(default: list[str] | None = None) -> dict:
+    """Heating activity selector.
+
+    Accepts ``climate.*`` (uses ``hvac_action == 'heating'`` or state in
+    ``{heat, heat_cool, auto}``) and ``binary_sensor.*`` (state == 'on').
+    The latter is the cleanest signal for setups like Airzone where the
+    boiler-demand sensor is exposed separately from the thermostat —
+    avoids counting the electric A/C side that may run alongside the
+    floor-heating loop on big setpoint jumps.
+    """
     return {
         vol.Optional(CONF_CLIMATE_ENTITIES, default=default or []): EntitySelector(
-            EntitySelectorConfig(domain="climate", multiple=True)
+            EntitySelectorConfig(domain=["climate", "binary_sensor"], multiple=True)
         ),
     }
 

@@ -40,7 +40,7 @@ Ventajas del modelo:
 
 Madrileña entrega **una lectura cada ~60 días**, así que el panel de Energía nativo de HA se queda con un único punto bimestral — inútil para entender consumo. Esta integración:
 
-1. **Distribuye el bimestre por días** usando temperatura exterior (HDD base 18 °C) y, si se lo pides, las horas que tus `climate.*` estuvieron pidiendo calor. Días fríos consumen más, días templados menos.
+1. **Distribuye el bimestre por días** usando temperatura exterior (HDD base 18 °C) y, si se lo pides, las horas que tus `climate.*` (o `binary_sensor.*` de demanda — útil en Airzone) estuvieron pidiendo calor. Días fríos consumen más, días templados menos.
 2. **Separa ACS de calefacción.** Mira tus periodos de verano (sin calefacción) y deduce los m³/persona·día de agua caliente. Resta esa baseline de cada periodo invernal y reparte el resto como heating.
 3. **Empuja 3 series cumulativas** al recorder: `total`, `acs`, `heating` (en m³). El panel de Energía las ve como cualquier otro contador.
 4. **Backfill de temperatura** vía Open-Meteo Archive (gratis, sin API key) para los días que tu HA aún no tenía instalado.
@@ -82,7 +82,7 @@ El asistente pide:
 | **Nombre instalación** | Etiqueta libre. Aparece como nombre del dispositivo y prefijo de los sensores. | `Casa principal` |
 | **URL de tu HA** | URL HTTPS (local o pública). Default: `external_url` / `internal_url` configurada en HA. | `https://192.168.1.50:8123` o `https://micasa.duckdns.org` |
 | **Personas** | Cuántas personas viven en la casa. Sirve para estimar el consumo de agua caliente sanitaria. | `4` |
-| **Climates de calefacción** | Tus entidades `climate.*` (multi-select). Si las dejas vacías, el reparto se hace solo por temperatura exterior. | `climate.salon`, `climate.dormitorios` |
+| **Calefacción** | `climate.*` (cuenta cuando `hvac_action == heating`) y/o `binary_sensor.*` (cuenta cuando `on`). Multi-select. En setups Airzone con suelo radiante por gas + aire eléctrico, los `binary_sensor.*demanda_de_suelo*` aíslan el gas mejor que los climates (que también marcan `heating` mientras el aire eléctrico está empujando). Vacío = solo HDD. | `climate.salon`, `binary_sensor.despacho_demanda_de_suelo` |
 | **Sensor de temperatura exterior** | Cualquier `sensor.*` o `weather.*` (p. ej. `weather.met_no` por defecto). Si lo dejas vacío, se usa Open-Meteo Archive siempre. | `weather.met_no` |
 | **Temperatura base HDD** | 18 °C es el estándar para España (REE / IDAE). Solo bájala si tienes la casa muy fría. | `18.0` |
 | **Calcular precio (€)** | Casilla opt-in. Si la marcas, aparece un segundo paso que pide `kWh/m³` (PCS, ~11.70 en España) y `€/kWh` (de tu factura). | (sin marcar) |

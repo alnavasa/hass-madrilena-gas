@@ -32,6 +32,9 @@ _LOGGER = logging.getLogger(__name__)
 #: relay is actually closed; legacy ones only flip ``state`` to "heat".
 _HEATING_STATES = {"heat", "heat_cool", "auto"}
 _HEATING_ACTIONS = {"heating"}
+#: For ``binary_sensor.*`` selections (e.g. Airzone "demanda de suelo")
+#: we treat plain on/off as the heat-on signal — no attributes needed.
+_BINARY_ON_STATES = {"on", "true", "1"}
 
 
 async def fetch_daily_temps_from_recorder(
@@ -193,14 +196,21 @@ def _state_to_temp(state: State) -> float | None:
 
 
 def _is_heating(state: State) -> bool:
-    """True if a climate.* state represents 'heat is being called for now'.
+    """True if the entity's state represents 'heat is being called for now'.
 
-    Modern thermostats expose ``hvac_action`` ("heating" / "idle" /
-    "off" / "cooling") which is the truest signal. Legacy ones only flip
-    ``state`` to "heat" / "off" — fall back to that when no action.
+    For ``climate.*``: prefer ``hvac_action`` ("heating" / "idle" /
+    "off" / "cooling") which is the truest signal. Legacy thermostats
+    only flip ``state`` to "heat" — fall back to that when no action.
+
+    For ``binary_sensor.*``: plain ``on`` is heat-on. Useful when the
+    thermostat exposes a separate demand sensor (e.g. Airzone
+    ``binary_sensor.<zona>_demanda_de_suelo`` is ON only while the
+    boiler loop is actually circulating, ignoring any A/C side).
     """
     if state is None or not state.state:
         return False
+    if state.entity_id.startswith("binary_sensor."):
+        return state.state.lower() in _BINARY_ON_STATES
     action: Any = state.attributes.get("hvac_action") if state.attributes else None
     if action:
         return str(action).lower() in _HEATING_ACTIONS

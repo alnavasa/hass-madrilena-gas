@@ -100,7 +100,8 @@ async def _publish_bookmarklet_notification(
         f"# Bookmarklet listo · {install}\n\n"
         f"Para conectar **{install}** a la Oficina Virtual de Madrileña Red de Gas:\n\n"
         f"### A) Página de instalación con botón de copiar (recomendado)\n\n"
-        f"[Abrir página de instalación]({page_url})\n\n"
+        f'<a href="{page_url}" target="_blank" rel="noopener">'
+        f"Abrir página de instalación</a>\n\n"
         f"Esa página incluye:\n"
         f"- Un enlace que puedes **arrastrar a la barra de marcadores**.\n"
         f"- Un botón **\"📋 Copiar bookmarklet\"** (un toque en iOS).\n"

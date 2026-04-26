@@ -8,7 +8,7 @@
           "name": "Nombre de la instalación",
           "ha_url": "URL HTTPS de Home Assistant",
           "people": "Número de personas en la vivienda",
-          "climate_entities": "Termostatos / climates de calefacción",
+          "climate_entities": "Calefacción: climates o binary_sensors de demanda",
           "outdoor_temp_entity": "Sensor o weather de temperatura exterior",
           "hdd_base_c": "Temperatura base HDD (°C)",
           "enable_cost": "Calcular precio (€) además del consumo (m³)"
@@ -17,7 +17,7 @@
           "name": "Etiqueta legible para tus sensores y dispositivo (ej. \"Casa principal\"). El número de contador sigue siendo el identificador interno y se vincula automáticamente la primera vez que pulsas el bookmarklet.",
           "ha_url": "Por dónde llega el bookmarklet a tu HA. Puede ser una URL HTTPS local (IP o hostname de tu LAN) o pública (Nabu Casa, DuckDNS, Cloudflare Tunnel…). Debe ser HTTPS — los navegadores bloquean fetch HTTP desde el portal (HTTPS). Por defecto: {default_url}.",
           "people": "Sirve para estimar el consumo de ACS (agua caliente sanitaria). Cuanta más gente, más m³/día se asignan a ACS y menos a calefacción. Si vives solo, pon 1.",
-          "climate_entities": "Si tienes uno o varios termostatos en HA, marcalos. La integración cuenta cuántas horas estuvieron pidiendo calor por hora y reparte mejor el consumo bimestral. Si no marcas ninguno, el reparto se hace solo por temperatura exterior (HDD).",
+          "climate_entities": "Marca uno o varios `climate.*` (termostatos) y/o `binary_sensor.*` (sensores de demanda tipo Airzone \"demanda de suelo\"). Climates se cuentan cuando `hvac_action == heating`; binary_sensors cuando están `on`. Si tu setup mezcla suelo radiante por gas + aire eléctrico (Airzone), el binary_sensor del suelo es la señal más limpia. Si no marcas nada, el reparto se hace solo por temperatura exterior (HDD).",
           "outdoor_temp_entity": "Cualquier sensor.* de temperatura o weather.* (ej. weather.met_no por defecto). Para los días previos al historial de HA se usa Open-Meteo Archive (gratis, sin API key) como complemento. Si lo dejas vacío, se usa Open-Meteo siempre.",
           "hdd_base_c": "Temperatura por debajo de la cual se considera que se está calentando. 18 °C es el estándar para España (REE / IDAE). Solo bájala si tienes la casa muy fría o sabes lo que haces.",
           "enable_cost": "Si lo activas, se crearán entidades extra de coste (€ acumulado, kWh acumulado) que pueden integrarse en el Panel de Energía. Si lo dejas desactivado, solo entidades de m³."
@@ -51,7 +51,7 @@
         "description": "Edita los parámetros de reparto y coste. Los cambios se aplican al siguiente refresco del coordinador (1 h o cuando llegue una lectura nueva).",
         "data": {
           "people": "Número de personas en la vivienda",
-          "climate_entities": "Termostatos / climates de calefacción",
+          "climate_entities": "Calefacción: climates o binary_sensors de demanda",
           "outdoor_temp_entity": "Sensor o weather de temperatura exterior",
           "hdd_base_c": "Temperatura base HDD (°C)",
           "acs_m3_per_person_day": "ACS manual (m³/persona·día) — opcional",
@@ -61,7 +61,7 @@
         },
         "data_description": {
           "people": "Cambia este valor cuando alguien se mude o llegue. Recalcula el consumo de ACS hacia atrás en el siguiente refresco.",
-          "climate_entities": "Vacío = reparto solo por HDD. Si añades climates después, los días sin datos históricos siguen repartiéndose por HDD; los nuevos ya usan las horas de termostato.",
+          "climate_entities": "Vacío = reparto solo por HDD. Acepta `climate.*` (lee `hvac_action`) y `binary_sensor.*` (lee `on`/`off`). En setups Airzone con gas+eléctrico, el `binary_sensor.*demanda_de_suelo*` aísla mejor el gas. Los días sin histórico se reparten por HDD igualmente.",
           "outdoor_temp_entity": "Vacío = se usa Open-Meteo Archive siempre. Útil si tienes una sonda exterior que prefieres a un weather genérico.",
           "hdd_base_c": "Por debajo de esta temperatura cuenta como día frío. Estándar 18 °C.",
           "acs_m3_per_person_day": "Por defecto la integración deduce este valor de tus periodos de verano (cuando solo se gasta gas para agua caliente). Si tu uso es atípico (gimnasio fuera, vacaciones largas), pon aquí el valor que prefieras. Vacío o 0 = automático.",

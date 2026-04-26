@@ -8,7 +8,7 @@
           "name": "Installation name",
           "ha_url": "Home Assistant HTTPS URL",
           "people": "Number of people in the household",
-          "climate_entities": "Heating thermostats / climate entities",
+          "climate_entities": "Heating: climates or demand binary_sensors",
           "outdoor_temp_entity": "Outdoor temperature sensor or weather entity",
           "hdd_base_c": "HDD base temperature (°C)",
           "enable_cost": "Compute price (€) on top of consumption (m³)"
@@ -17,7 +17,7 @@
           "name": "Human-readable label for your sensors and device (e.g. \"Main house\"). The meter number remains the internal identifier and gets bound automatically the first time you click the bookmarklet.",
           "ha_url": "Where the bookmarklet POSTs to your HA. Can be a local HTTPS URL (LAN IP or hostname) or public (Nabu Casa, DuckDNS, Cloudflare Tunnel…). It must be HTTPS — browsers block fetch HTTP from the portal (HTTPS). Default: {default_url}.",
           "people": "Used to estimate DHW (domestic hot water) consumption. The more people, the more m³/day are assigned to DHW and the less to heating. If you live alone, set 1.",
-          "climate_entities": "If you have one or several thermostats in HA, select them. The integration counts how many hours they were demanding heat per hour and improves the bimonthly distribution. If none are selected, distribution is done only by outdoor temperature (HDD).",
+          "climate_entities": "Pick one or more `climate.*` (thermostats) and/or `binary_sensor.*` (demand sensors like Airzone \"floor demand\"). Climates are counted while `hvac_action == heating`; binary_sensors while `on`. For Airzone-style setups that mix gas underfloor + electric A/C, the floor binary_sensor is the cleanest signal. If none selected, distribution is done only by outdoor temperature (HDD).",
           "outdoor_temp_entity": "Any sensor.* of temperature or weather.* (e.g. weather.met_no by default). For days before HA's recorder history, Open-Meteo Archive (free, no API key) is used as a complement. If left empty, Open-Meteo is always used.",
           "hdd_base_c": "Temperature below which heating is considered active. 18 °C is the Spanish standard (REE / IDAE). Only lower it if your house is very cold or you know what you're doing.",
           "enable_cost": "If enabled, extra cost entities (€ accumulated, kWh accumulated) will be created and can be added to the Energy panel. If disabled, only m³ entities."
@@ -51,7 +51,7 @@
         "description": "Edit the distribution and cost parameters. Changes are applied on the next coordinator refresh (1 h or when a new reading arrives).",
         "data": {
           "people": "Number of people in the household",
-          "climate_entities": "Heating thermostats / climate entities",
+          "climate_entities": "Heating: climates or demand binary_sensors",
           "outdoor_temp_entity": "Outdoor temperature sensor or weather entity",
           "hdd_base_c": "HDD base temperature (°C)",
           "acs_m3_per_person_day": "Manual DHW (m³/person·day) — optional",
@@ -61,7 +61,7 @@
         },
         "data_description": {
           "people": "Change this when someone moves in or out. DHW consumption is recalculated backwards on the next refresh.",
-          "climate_entities": "Empty = distribution by HDD only. If you add climates later, days without historical data still get distributed by HDD; new days use thermostat hours.",
+          "climate_entities": "Empty = distribution by HDD only. Accepts `climate.*` (reads `hvac_action`) and `binary_sensor.*` (reads `on`/`off`). For Airzone gas+electric setups, `binary_sensor.*demanda_de_suelo*` isolates gas best. Days without history still get HDD-only weight.",
           "outdoor_temp_entity": "Empty = Open-Meteo Archive is always used. Useful if you have an outdoor probe you prefer over a generic weather entity.",
           "hdd_base_c": "Below this temperature counts as a cold day. Standard 18 °C.",
           "acs_m3_per_person_day": "By default the integration deduces this value from your summer periods (when gas is only used for hot water). If your usage is atypical (gym away, long vacations), put your preferred value here. Empty or 0 = automatic.",
