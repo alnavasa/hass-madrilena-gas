@@ -145,11 +145,16 @@ class DistributionResult:
 class ClimateActivityHour:
     """One hour of climate activity for the heating distribution.
 
-    ``heating_fraction`` ∈ [0, 1]: how much of that hour at least one
-    of the configured climate.* entities was actively calling for heat.
-    A simple model: 0 if all climates were off / cooling; 1 if any was
-    in ``heat`` or ``auto`` with current_temp < target_temp; partial if
-    the state changed mid-hour.
+    ``heating_fraction`` is **not** a 0..1 fraction — it is the
+    area-weighted heating contribution for the hour:
+    ``Σ (zone_area_m² × fraction_of_hour_zone_was_on)``. With default
+    weights (1.0 per zone) the value equals the count of zone-hours
+    active. With realistic m² weights it reflects gas-burning
+    proportionally per zone.
+
+    The distribution layer normalizes the per-day sum across the full
+    bimonthly period when allocating m³, so absolute scale is irrelevant
+    — only the relative shape across days matters.
     """
 
     hour_start: datetime

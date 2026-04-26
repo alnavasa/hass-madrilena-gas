@@ -40,12 +40,25 @@ CONF_HA_URL = "ha_url"
 #: as space heating and distributed by HDD / climate-on hours.
 CONF_PEOPLE = "people"
 
-#: Entity ids of the climate.* entities that drive the heating. The user
-#: picks 1..N from the available climates in their HA. When at least one
-#: of them is in a heating state (heat/auto with current_temp <
-#: target_temp) for an hour, that hour gets weighted in the distribution.
-#: Empty list = fall back to pure HDD on outdoor temperature only.
+#: Entity ids of the climate.* / binary_sensor.* entities that drive the
+#: heating. The user picks 1..N from their HA. Each entity contributes
+#: `area_m² × heating_fraction` per hour to the distribution weight, so
+#: hours with many or larger zones active receive more m³ from the
+#: bimonthly delta. Empty list = fall back to pure HDD only.
 CONF_CLIMATE_ENTITIES = "climate_entities"
+
+#: Per-entity floor area in m². Dict mapping each entity_id picked in
+#: ``CONF_CLIMATE_ENTITIES`` to its weight. Default 1.0 per entity =
+#: pure zone-count weighting (a 30 m² living room counts the same as
+#: a 5 m² bathroom). Setting realistic m² gives the gas-burning weight
+#: per zone and produces a noticeably better daily distribution in
+#: multi-zone houses (Airzone, etc.).
+CONF_CLIMATE_AREAS_M2 = "climate_areas_m2"
+
+#: Default weight when the user leaves a zone area blank — 1.0 means
+#: "count this zone as one unit" which mirrors the v0.1.1 zone-count
+#: behavior (no measurement needed).
+DEFAULT_AREA_M2 = 1.0
 
 #: Entity id of the outdoor temperature sensor. Auto-detect from
 #: weather.* entities (Met.no by default exists in nearly all HA installs)

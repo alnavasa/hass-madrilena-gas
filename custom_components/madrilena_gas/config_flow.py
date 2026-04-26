@@ -52,6 +52,7 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     CONF_ACS_M3_PER_PERSON_DAY,
+    CONF_CLIMATE_AREAS_M2,
     CONF_CLIMATE_ENTITIES,
     CONF_ENABLE_COST,
     CONF_HA_URL,
@@ -62,6 +63,7 @@ from .const import (
     CONF_PEOPLE,
     CONF_PRICE_EUR_KWH,
     CONF_TOKEN,
+    DEFAULT_AREA_M2,
     DEFAULT_HDD_BASE_C,
     DEFAULT_KWH_PER_M3,
     DEFAULT_NAME,
@@ -73,6 +75,7 @@ _LOGGER = logging.getLogger(__name__)
 # Realistic ranges for residential households.
 _PEOPLE_MIN, _PEOPLE_MAX = 0, 20
 _HDD_BASE_MIN, _HDD_BASE_MAX = 10.0, 22.0
+_AREA_M2_MIN, _AREA_M2_MAX = 0.1, 500.0
 _ACS_MIN, _ACS_MAX = 0.0, 0.5
 _KWH_PER_M3_MIN, _KWH_PER_M3_MAX = 9.0, 13.0
 _PRICE_MIN, _PRICE_MAX = 0.0, 1.0
@@ -116,6 +119,32 @@ def _outdoor_temp_field(default: str = "") -> dict:
     if default:
         return {vol.Optional(CONF_OUTDOOR_TEMP_ENTITY, default=default): EntitySelector(cfg)}
     return {vol.Optional(CONF_OUTDOOR_TEMP_ENTITY): EntitySelector(cfg)}
+
+
+def _areas_schema(
+    entity_ids: list[str], current: dict[str, float] | None = None,
+) -> vol.Schema:
+    """Build a schema with one m² field per selected entity.
+
+    Voluptuous accepts dotted strings as keys (``climate.salon``); HA
+    renders them as field labels in the UI. Default per zone is
+    ``DEFAULT_AREA_M2`` (1.0 = pure zone-counting). Users with multi-zone
+    setups (Airzone) override with realistic m² for accurate weighting.
+    """
+    current = current or {}
+    fields: dict = {}
+    for eid in entity_ids:
+        default = float(current.get(eid, DEFAULT_AREA_M2))
+        fields[vol.Required(eid, default=default)] = NumberSelector(
+            NumberSelectorConfig(
+                min=_AREA_M2_MIN,
+                max=_AREA_M2_MAX,
+                step=0.1,
+                mode=NumberSelectorMode.BOX,
+                unit_of_measurement="m²",
+            )
+        )
+    return vol.Schema(fields)
 
 
 def _hdd_base_field(default: float = DEFAULT_HDD_BASE_C) -> dict:
@@ -184,6 +213,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._token: str = ""
         self._people: int = 1
         self._climate_entities: list[str] = []
+        self._climate_areas: dict[str, float] = {}
         self._outdoor_entity: str = ""
         self._hdd_base: float = DEFAULT_HDD_BASE_C
         self._enable_cost: bool = False
@@ -211,6 +241,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors[CONF_HA_URL] = "invalid_ha_url"
             else:
                 self._token = secrets.token_hex(24)  # 48 chars, 192 bits
+                if self._climate_entities:
+                    return await self.async_step_areas()
                 if self._enable_cost:
                     return await self.async_step_cost()
                 return await self._create_entry()
@@ -235,8 +267,27 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
+    async def async_step_areas(
+        self, user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Step 2 — m² per selected climate / binary_sensor (only when any picked)."""
+        if user_input is not None:
+            self._climate_areas = {
+                eid: float(user_input.get(eid, DEFAULT_AREA_M2) or DEFAULT_AREA_M2)
+                for eid in self._climate_entities
+            }
+            if self._enable_cost:
+                return await self.async_step_cost()
+            return await self._create_entry()
+
+        return self.async_show_form(
+            step_id="areas",
+            data_schema=_areas_schema(self._climate_entities, self._climate_areas),
+            description_placeholders={"count": str(len(self._climate_entities))},
+        )
+
     async def async_step_cost(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Step 2 — cost parameters (only when enable_cost was ticked)."""
+        """Step 3 — cost parameters (only when enable_cost was ticked)."""
         if user_input is not None:
             self._cost_params = {
                 CONF_KWH_PER_M3: float(user_input[CONF_KWH_PER_M3]),
@@ -259,6 +310,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_HA_URL: self._ha_url,
             CONF_PEOPLE: self._people,
             CONF_CLIMATE_ENTITIES: self._climate_entities,
+            CONF_CLIMATE_AREAS_M2: self._climate_areas,
             CONF_OUTDOOR_TEMP_ENTITY: self._outdoor_entity,
             CONF_HDD_BASE_C: self._hdd_base,
             CONF_ENABLE_COST: self._enable_cost,
@@ -285,12 +337,13 @@ class MadrilenaGasOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         self._entry = config_entry
+        self._pending: dict[str, Any] = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         merged = {**self._entry.data, **self._entry.options}
 
         if user_input is not None:
-            new_options: dict[str, Any] = {
+            self._pending = {
                 CONF_PEOPLE: int(user_input.get(CONF_PEOPLE, 1) or 0),
                 CONF_CLIMATE_ENTITIES: list(user_input.get(CONF_CLIMATE_ENTITIES) or []),
                 CONF_OUTDOOR_TEMP_ENTITY: (user_input.get(CONF_OUTDOOR_TEMP_ENTITY) or "").strip(),
@@ -299,11 +352,15 @@ class MadrilenaGasOptionsFlow(config_entries.OptionsFlow):
             }
             acs_val = user_input.get(CONF_ACS_M3_PER_PERSON_DAY)
             if acs_val and float(acs_val) > 0:
-                new_options[CONF_ACS_M3_PER_PERSON_DAY] = float(acs_val)
-            if new_options[CONF_ENABLE_COST]:
-                new_options[CONF_KWH_PER_M3] = float(user_input.get(CONF_KWH_PER_M3, DEFAULT_KWH_PER_M3))
-                new_options[CONF_PRICE_EUR_KWH] = float(user_input.get(CONF_PRICE_EUR_KWH, 0.07))
-            return self.async_create_entry(title="", data=new_options)
+                self._pending[CONF_ACS_M3_PER_PERSON_DAY] = float(acs_val)
+            if self._pending[CONF_ENABLE_COST]:
+                self._pending[CONF_KWH_PER_M3] = float(user_input.get(CONF_KWH_PER_M3, DEFAULT_KWH_PER_M3))
+                self._pending[CONF_PRICE_EUR_KWH] = float(user_input.get(CONF_PRICE_EUR_KWH, 0.07))
+            if self._pending[CONF_CLIMATE_ENTITIES]:
+                return await self.async_step_areas()
+            # No climates selected → drop any stale per-zone areas.
+            self._pending[CONF_CLIMATE_AREAS_M2] = {}
+            return self.async_create_entry(title="", data=self._pending)
 
         schema = vol.Schema(
             {
@@ -323,3 +380,24 @@ class MadrilenaGasOptionsFlow(config_entries.OptionsFlow):
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)
+
+    async def async_step_areas(
+        self, user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Per-zone m² edit step (shown when at least one entity is picked)."""
+        merged = {**self._entry.data, **self._entry.options}
+        current_areas = dict(merged.get(CONF_CLIMATE_AREAS_M2) or {})
+        entities = self._pending.get(CONF_CLIMATE_ENTITIES) or []
+
+        if user_input is not None:
+            self._pending[CONF_CLIMATE_AREAS_M2] = {
+                eid: float(user_input.get(eid, DEFAULT_AREA_M2) or DEFAULT_AREA_M2)
+                for eid in entities
+            }
+            return self.async_create_entry(title="", data=self._pending)
+
+        return self.async_show_form(
+            step_id="areas",
+            data_schema=_areas_schema(entities, current_areas),
+            description_placeholders={"count": str(len(entities))},
+        )

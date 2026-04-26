@@ -85,7 +85,9 @@ El asistente pide:
 | **Calefacción** | `climate.*` (cuenta cuando `hvac_action == heating`) y/o `binary_sensor.*` (cuenta cuando `on`). Multi-select. En setups Airzone con suelo radiante por gas + aire eléctrico, los `binary_sensor.*demanda_de_suelo*` aíslan el gas mejor que los climates (que también marcan `heating` mientras el aire eléctrico está empujando). Vacío = solo HDD. | `climate.salon`, `binary_sensor.despacho_demanda_de_suelo` |
 | **Sensor de temperatura exterior** | Cualquier `sensor.*` o `weather.*` (p. ej. `weather.met_no` por defecto). Si lo dejas vacío, se usa Open-Meteo Archive siempre. | `weather.met_no` |
 | **Temperatura base HDD** | 18 °C es el estándar para España (REE / IDAE). Solo bájala si tienes la casa muy fría. | `18.0` |
-| **Calcular precio (€)** | Casilla opt-in. Si la marcas, aparece un segundo paso que pide `kWh/m³` (PCS, ~11.70 en España) y `€/kWh` (de tu factura). | (sin marcar) |
+| **Calcular precio (€)** | Casilla opt-in. Si la marcas, aparece un paso extra que pide `kWh/m³` (PCS, ~11.70 en España) y `€/kWh` (de tu factura). | (sin marcar) |
+
+Si has elegido al menos un `climate.*` o `binary_sensor.*`, aparece un **segundo paso "Metros² por zona"** donde indicas los m² de cada uno. Si lo dejas todo en `1`, el reparto cuenta cuántas zonas estuvieron pidiendo calor cada hora (mejor que la v0.1.1 que sólo miraba "alguna zona sí/no", pero sin distinguir tamaños). Si pones m² reales, el reparto es proporcional al gas que realmente quema cada zona — recomendado para Airzone u otros multi-zona desiguales (un salón de 30 m² consume ~6× más que un baño de 5 m²).
 
 Al pulsar **Enviar**:
 
@@ -147,6 +149,7 @@ Puedes editar:
 
 - Personas en la vivienda (recalcula ACS hacia atrás).
 - Climates / sensor exterior / HDD base.
+- **Metros² por zona** (segundo paso, sólo si hay al menos un `climate.*` o `binary_sensor.*` marcado). Pondera el reparto entre zonas — deja `1` en todas para reparto por cuenta de zonas.
 - Override manual del baseline ACS (en m³/persona·día), si tu uso es atípico.
 - Activar/desactivar entidades de coste y editar `kWh/m³` y `€/kWh`.
 

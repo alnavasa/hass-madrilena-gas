@@ -23,6 +23,11 @@
           "enable_cost": "If enabled, extra cost entities (€ accumulated, kWh accumulated) will be created and can be added to the Energy panel. If disabled, only m³ entities."
         }
       },
+      "areas": {
+        "title": "Floor area per zone",
+        "description": "You picked {count} zones. Enter the **floor area in m²** for each one to weight the distribution.\n\n**Skip (leave `1` for all)**: every zone weighs equally. This is the count-zones mode (an improvement over v0.1.1 which didn't count zones either, but still ignores that a big living room burns way more than a small bathroom).\n\n**Real m²**: distribution is proportional to the gas each zone actually burns. Recommended for Airzone or other uneven multi-zone setups.",
+        "data_description": {}
+      },
       "cost": {
         "title": "Cost parameters",
         "description": "Madrileña is only the distributor; the gas price is set by your retailer (Endesa, Naturgy, TUR…). These two values are used to convert m³ to kWh and then to €.",
@@ -46,6 +51,11 @@
   },
   "options": {
     "step": {
+      "areas": {
+        "title": "Floor area per zone",
+        "description": "Enter m² for each selected zone to weight the distribution. Leave `1` to keep equal weights (zone-count mode).",
+        "data_description": {}
+      },
       "init": {
         "title": "Madrileña Red de Gas",
         "description": "Edit the distribution and cost parameters. Changes are applied on the next coordinator refresh (1 h or when a new reading arrives).",

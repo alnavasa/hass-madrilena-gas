@@ -37,6 +37,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .acs import AcsBaseline, derive_acs_baseline
 from .const import (
     CONF_ACS_M3_PER_PERSON_DAY,
+    CONF_CLIMATE_AREAS_M2,
     CONF_CLIMATE_ENTITIES,
     CONF_HDD_BASE_C,
     CONF_OUTDOOR_TEMP_ENTITY,
@@ -139,6 +140,7 @@ class MadrilenaGasCoordinator(DataUpdateCoordinator[CoordinatorData]):
         hdd_base = float(opts.get(CONF_HDD_BASE_C, DEFAULT_HDD_BASE_C))
         outdoor_entity = (opts.get(CONF_OUTDOOR_TEMP_ENTITY) or "").strip() or None
         climate_entities = list(opts.get(CONF_CLIMATE_ENTITIES) or [])
+        climate_areas = dict(opts.get(CONF_CLIMATE_AREAS_M2) or {})
 
         periods = build_periods(readings) if len(readings) >= 2 else []
         baseline = derive_acs_baseline(
@@ -159,7 +161,7 @@ class MadrilenaGasCoordinator(DataUpdateCoordinator[CoordinatorData]):
             weather_days_known += w_known
 
             climate_hours, c_known = await self._climate_hours_for_period(
-                period, climate_entities,
+                period, climate_entities, areas_m2=climate_areas,
             )
             climate_hours_total += period.days * 24
             climate_hours_known += c_known
@@ -244,6 +246,7 @@ class MadrilenaGasCoordinator(DataUpdateCoordinator[CoordinatorData]):
             opts.get(CONF_HDD_BASE_C),
             opts.get(CONF_OUTDOOR_TEMP_ENTITY),
             tuple(sorted(opts.get(CONF_CLIMATE_ENTITIES) or [])),
+            tuple(sorted((opts.get(CONF_CLIMATE_AREAS_M2) or {}).items())),
         )
 
     async def _weather_for_period(
@@ -307,6 +310,7 @@ class MadrilenaGasCoordinator(DataUpdateCoordinator[CoordinatorData]):
         self,
         period: Period,
         climate_entities: list[str],
+        areas_m2: dict[str, float] | None = None,
     ) -> tuple[list[ClimateActivityHour], int]:
         if not climate_entities:
             return [], 0
@@ -316,6 +320,7 @@ class MadrilenaGasCoordinator(DataUpdateCoordinator[CoordinatorData]):
                 climate_entities,
                 period.start,
                 period.end,
+                areas_m2=areas_m2,
             )
         except Exception:
             _LOGGER.exception(

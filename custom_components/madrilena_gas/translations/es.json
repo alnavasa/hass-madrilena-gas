@@ -23,6 +23,11 @@
           "enable_cost": "Si lo activas, se crearán entidades extra de coste (€ acumulado, kWh acumulado) que pueden integrarse en el Panel de Energía. Si lo dejas desactivado, solo entidades de m³."
         }
       },
+      "areas": {
+        "title": "Metros² por zona",
+        "description": "Tienes {count} zonas marcadas. Indica los **metros cuadrados** de cada una para ponderar el reparto del consumo.\n\n**Sin medir (deja `1` en todas)**: cada zona pesa lo mismo. Equivale a contar cuántas zonas estaban activas (mejor que la v0.1.1 que no contaba el número de zonas, pero sigue ignorando que un salón grande consume mucho más que un baño).\n\n**Con m² reales**: el reparto es proporcional al gas que realmente quema cada zona. Recomendado para Airzone u otros multi-zona desiguales.",
+        "data_description": {}
+      },
       "cost": {
         "title": "Parámetros de coste",
         "description": "Madrileña es solo distribuidora; el precio del gas lo pone tu comercializadora (Endesa, Naturgy, TUR…). Estos dos datos se usan para convertir m³ a kWh y luego a €.",
@@ -46,6 +51,11 @@
   },
   "options": {
     "step": {
+      "areas": {
+        "title": "Metros² por zona",
+        "description": "Indica los m² de cada zona seleccionada para ponderar el reparto. Deja `1` para mantener pesos iguales (modo cuenta-zonas).",
+        "data_description": {}
+      },
       "init": {
         "title": "Madrileña Red de Gas",
         "description": "Edita los parámetros de reparto y coste. Los cambios se aplican al siguiente refresco del coordinador (1 h o cuando llegue una lectura nueva).",

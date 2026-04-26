@@ -97,22 +97,36 @@ async def fetch_climate_hours_from_recorder(
     entity_ids: list[str],
     start: date,
     end: date,
+    areas_m2: dict[str, float] | None = None,
 ) -> list[ClimateActivityHour]:
-    """Per-hour heating fraction across one or more climate entities.
+    """Per-hour heating weight across one or more climate / binary_sensor entities.
 
-    For each hour in ``(start, end]``, the fraction is the union of any
-    configured climate entity being in a heating state during that hour
-    (a thermostat that runs 30 of 60 min contributes 0.5; two entities,
-    one running the full hour and another the second half, still
-    contribute 1.0 — we want "was heat being called for at all").
+    Each entity contributes ``area_m² × fraction_of_hour_on`` to its hour
+    bucket. ``areas_m2`` defaults to 1.0 per entity if missing — that
+    falls back to pure zone-count weighting (same shape as v0.1.1 but
+    without the misleading 1.0 cap).
 
-    Returned list is sparse: hours where no entity reported anything are
-    omitted. The distribution treats missing hours as zero heating, which
-    matches "the boiler was clearly off".
+    Examples (with default 1.0 weights):
+      * 1 zone heating full hour            → bucket = 1.0
+      * 6 zones heating same full hour      → bucket = 6.0
+      * 3 zones each heating 30 min         → bucket = 1.5
+
+    Examples with realistic m² weights (Airzone: salon=30, baño=4):
+      * Only baño heating full hour         → bucket = 4.0
+      * Only salon heating full hour        → bucket = 30.0
+      * Both heating full hour              → bucket = 34.0
+
+    The bucket value is *not* normalized to [0, 1] — the distribution
+    layer normalizes the per-day sum across the full bimonthly period
+    when allocating m³, so absolute scale is irrelevant.
+
+    Returned list is sparse: hours where no entity reported heating are
+    omitted. The distribution treats missing hours as zero heating.
     """
     if not entity_ids or start >= end:
         return []
 
+    weights = areas_m2 or {}
     tz = dt_util.get_time_zone(hass.config.time_zone) or dt_util.UTC
     window_start = datetime.combine(start, time(0, 0), tzinfo=tz)
     window_end = datetime.combine(end + timedelta(days=1), time(0, 0), tzinfo=tz)
@@ -121,9 +135,11 @@ async def fetch_climate_hours_from_recorder(
         _get_states_in_window, hass, entity_ids, window_start, window_end,
     )
 
-    # Per hour-bucket → max fraction-on across entities.
     bucket: dict[datetime, float] = defaultdict(float)
     for entity_id in entity_ids:
+        weight = float(weights.get(entity_id, 1.0))
+        if weight <= 0:
+            continue
         states = states_by_entity.get(entity_id, [])
         if not states:
             continue
@@ -139,12 +155,11 @@ async def fetch_climate_hours_from_recorder(
             span_end = min(span_end_raw, window_end).astimezone(tz)
             if span_end <= span_start:
                 continue
-            _accumulate_hours(bucket, span_start, span_end)
+            _accumulate_hours(bucket, span_start, span_end, weight=weight)
 
     out: list[ClimateActivityHour] = []
     for hour_start, fraction in sorted(bucket.items()):
-        capped = min(1.0, fraction)
-        out.append(ClimateActivityHour(hour_start=hour_start, heating_fraction=capped))
+        out.append(ClimateActivityHour(hour_start=hour_start, heating_fraction=fraction))
     return out
 
 
@@ -221,13 +236,14 @@ def _accumulate_hours(
     bucket: dict[datetime, float],
     span_start: datetime,
     span_end: datetime,
+    weight: float = 1.0,
 ) -> None:
     """Spread a [span_start, span_end) heat-on span across hourly buckets.
 
     Each bucket key is the wall-clock hour-start in the local tz; the
-    value is the fraction of that hour that was heat-on. A 30-minute
-    span at 14:15 lands as ``hour_14: 0.5``. A span crossing 14:50 →
-    15:20 lands as ``hour_14: 0.166, hour_15: 0.333``.
+    value is ``weight × fraction_of_hour_on``. A 30-minute span at 14:15
+    with weight=1 lands as ``hour_14: 0.5``; with weight=30 (m²) lands
+    as ``hour_14: 15.0``. Multiple zones add up.
     """
     cur = span_start
     while cur < span_end:
@@ -236,7 +252,7 @@ def _accumulate_hours(
         chunk_end = min(next_hour, span_end)
         seconds = (chunk_end - cur).total_seconds()
         if seconds > 0:
-            bucket[hour_start] = bucket.get(hour_start, 0.0) + seconds / 3600.0
+            bucket[hour_start] = bucket.get(hour_start, 0.0) + (seconds / 3600.0) * weight
         cur = chunk_end
 
 
