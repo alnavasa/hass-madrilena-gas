@@ -88,7 +88,7 @@
       },
       "autopilot": {
         "title": "Autopilot — portal credentials",
-        "description": "You have enabled **autopilot** mode (experimental). For HA to log into ov.madrilena.es on its own it needs your DNI and password.\n\nCredentials are stored locally under `<config>/.storage/` (same protection level as every other HA integration with a login).\n\nAfter saving this form a notification will appear asking you to press \"Reconfigure\" — that click triggers the OTP email **right then**, so it doesn't expire while you wait.",
+        "description": "You have enabled **autopilot** mode (experimental). For HA to log into ov.madrilena.es on its own it needs your DNI and password.\n\nCredentials are stored locally under HA `.storage` folder (same protection level as every other HA integration with a login).\n\nAfter saving this form a notification will appear asking you to press \"Reconfigure\" — that click triggers the OTP email **right then**, so it doesn't expire while you wait.",
         "data": {
           "dni": "DNI / NIE",
           "password": "Oficina Virtual password"

@@ -88,7 +88,7 @@
       },
       "autopilot": {
         "title": "Autopilot — credenciales del portal",
-        "description": "Has activado el modo **autopilot** (experimental). Para que HA pueda iniciar sesión en ov.madrilena.es por su cuenta hace falta el DNI y la contraseña.\n\nLas credenciales se guardan localmente en `<config>/.storage/` (mismo nivel de protección que el resto de integraciones de HA con login).\n\nAl guardar este formulario aparecerá una notificación pidiéndote pulsar \"Reconfigurar\" — ese clic dispara el envío del OTP por email **en ese momento**, así no caduca esperando.",
+        "description": "Has activado el modo **autopilot** (experimental). Para que HA pueda iniciar sesión en ov.madrilena.es por su cuenta hace falta el DNI y la contraseña.\n\nLas credenciales se guardan localmente en la carpeta `.storage` de HA (mismo nivel de protección que el resto de integraciones de HA con login).\n\nAl guardar este formulario aparecerá una notificación pidiéndote pulsar \"Reconfigurar\" — ese clic dispara el envío del OTP por email **en ese momento**, así no caduca esperando.",
         "data": {
           "dni": "DNI / NIE",
           "password": "Contraseña de la Oficina Virtual"
