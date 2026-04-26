@@ -1,0 +1,128 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Madrileña Red de Gas",
+        "description": "Esta integración recibe los datos de consumo por HTTP desde un *bookmarklet* (un favorito JavaScript) que pulsas en tu navegador cuando ya estás logueado en la Oficina Virtual de Madrileña.\n\nIntroduce un nombre para esta instalación, la URL HTTPS de tu Home Assistant y los parámetros de reparto (personas + climates + temperatura exterior). Al confirmar se te enseñará el código del bookmarklet listo para pegar en una notificación persistente.",
+        "data": {
+          "name": "Nombre de la instalación",
+          "ha_url": "URL HTTPS de Home Assistant",
+          "people": "Número de personas en la vivienda",
+          "climate_entities": "Termostatos / climates de calefacción",
+          "outdoor_temp_entity": "Sensor o weather de temperatura exterior",
+          "hdd_base_c": "Temperatura base HDD (°C)",
+          "enable_cost": "Calcular precio (€) además del consumo (m³)"
+        },
+        "data_description": {
+          "name": "Etiqueta legible para tus sensores y dispositivo (ej. \"Casa principal\"). El número de contador sigue siendo el identificador interno y se vincula automáticamente la primera vez que pulsas el bookmarklet.",
+          "ha_url": "Por dónde llega el bookmarklet a tu HA. Puede ser una URL HTTPS local (IP o hostname de tu LAN) o pública (Nabu Casa, DuckDNS, Cloudflare Tunnel…). Debe ser HTTPS — los navegadores bloquean fetch HTTP desde el portal (HTTPS). Por defecto: {default_url}.",
+          "people": "Sirve para estimar el consumo de ACS (agua caliente sanitaria). Cuanta más gente, más m³/día se asignan a ACS y menos a calefacción. Si vives solo, pon 1.",
+          "climate_entities": "Si tienes uno o varios termostatos en HA, marcalos. La integración cuenta cuántas horas estuvieron pidiendo calor por hora y reparte mejor el consumo bimestral. Si no marcas ninguno, el reparto se hace solo por temperatura exterior (HDD).",
+          "outdoor_temp_entity": "Cualquier sensor.* de temperatura o weather.* (ej. weather.met_no por defecto). Para los días previos al historial de HA se usa Open-Meteo Archive (gratis, sin API key) como complemento. Si lo dejas vacío, se usa Open-Meteo siempre.",
+          "hdd_base_c": "Temperatura por debajo de la cual se considera que se está calentando. 18 °C es el estándar para España (REE / IDAE). Solo bájala si tienes la casa muy fría o sabes lo que haces.",
+          "enable_cost": "Si lo activas, se crearán entidades extra de coste (€ acumulado, kWh acumulado) que pueden integrarse en el Panel de Energía. Si lo dejas desactivado, solo entidades de m³."
+        }
+      },
+      "cost": {
+        "title": "Parámetros de coste",
+        "description": "Madrileña es solo distribuidora; el precio del gas lo pone tu comercializadora (Endesa, Naturgy, TUR…). Estos dos datos se usan para convertir m³ a kWh y luego a €.",
+        "data": {
+          "kwh_per_m3": "Factor de conversión m³ → kWh (PCS)",
+          "price_eur_kwh": "Precio unitario €/kWh"
+        },
+        "data_description": {
+          "kwh_per_m3": "Poder Calorífico Superior. En España el valor medio de Madrileña ronda 11,70 kWh/m³ pero varía ±2 % por trimestre y por zona. Aparece en tu factura de gas como \"Coeficiente de conversión\".",
+          "price_eur_kwh": "Precio unitario aplicado a la energía consumida. Búscalo en la última factura como \"Energía consumida\" dividido entre los kWh facturados. Cambia cuando renegocies tarifa."
+        }
+      }
+    },
+    "error": {
+      "missing_ha_url": "Hace falta una URL HTTPS para que el bookmarklet pueda postear desde tu navegador.",
+      "invalid_ha_url": "La URL debe empezar por http:// o https://. Recomendado HTTPS — los navegadores bloquean fetch HTTP desde el portal."
+    },
+    "abort": {
+      "reauth_not_supported": "No hay sesión en HA que caduque — los datos los aporta tu navegador vía bookmarklet. Si necesitas rotar el token, borra esta integración y vuelve a añadirla."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Madrileña Red de Gas",
+        "description": "Edita los parámetros de reparto y coste. Los cambios se aplican al siguiente refresco del coordinador (1 h o cuando llegue una lectura nueva).",
+        "data": {
+          "people": "Número de personas en la vivienda",
+          "climate_entities": "Termostatos / climates de calefacción",
+          "outdoor_temp_entity": "Sensor o weather de temperatura exterior",
+          "hdd_base_c": "Temperatura base HDD (°C)",
+          "acs_m3_per_person_day": "ACS manual (m³/persona·día) — opcional",
+          "enable_cost": "Calcular precio (€) además del consumo (m³)",
+          "kwh_per_m3": "Factor de conversión m³ → kWh (PCS)",
+          "price_eur_kwh": "Precio unitario €/kWh"
+        },
+        "data_description": {
+          "people": "Cambia este valor cuando alguien se mude o llegue. Recalcula el consumo de ACS hacia atrás en el siguiente refresco.",
+          "climate_entities": "Vacío = reparto solo por HDD. Si añades climates después, los días sin datos históricos siguen repartiéndose por HDD; los nuevos ya usan las horas de termostato.",
+          "outdoor_temp_entity": "Vacío = se usa Open-Meteo Archive siempre. Útil si tienes una sonda exterior que prefieres a un weather genérico.",
+          "hdd_base_c": "Por debajo de esta temperatura cuenta como día frío. Estándar 18 °C.",
+          "acs_m3_per_person_day": "Por defecto la integración deduce este valor de tus periodos de verano (cuando solo se gasta gas para agua caliente). Si tu uso es atípico (gimnasio fuera, vacaciones largas), pon aquí el valor que prefieras. Vacío o 0 = automático.",
+          "enable_cost": "Si lo desactivas, las entidades de coste desaparecen al recargar la integración (los sensores de m³ siguen igual).",
+          "kwh_per_m3": "Aparece en tu factura de gas como \"Coeficiente de conversión\". España ~11,70.",
+          "price_eur_kwh": "Búscalo en la última factura. Cambia cuando renegocies tarifa."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "meter_reading": {
+        "name": "Lectura del contador"
+      },
+      "last_reading_date": {
+        "name": "Última lectura"
+      },
+      "last_reading_type": {
+        "name": "Tipo última lectura"
+      },
+      "last_period_total": {
+        "name": "Último periodo total"
+      },
+      "last_period_acs": {
+        "name": "Último periodo ACS"
+      },
+      "last_period_heating": {
+        "name": "Último periodo calefacción"
+      },
+      "acs_baseline": {
+        "name": "Baseline ACS"
+      },
+      "last_ingest_at": {
+        "name": "Última actualización"
+      },
+      "data_age_days": {
+        "name": "Días desde última lectura"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refrescar sensores",
+      "description": "Reprocesa el cache local y refresca atributos. NO descarga nada del portal — para eso hay que pulsar el bookmarklet en el navegador.",
+      "fields": {
+        "instance": {
+          "name": "Instalación",
+          "description": "Nombre o entry_id de una integración concreta. Vacío = todas."
+        }
+      }
+    },
+    "show_bookmarklet": {
+      "name": "Mostrar bookmarklet",
+      "description": "Vuelve a mostrar el código del bookmarklet en una notificación persistente — útil si la cerraste sin querer.",
+      "fields": {
+        "instance": {
+          "name": "Instalación",
+          "description": "Nombre o entry_id de la integración cuyo bookmarklet quieres ver."
+        }
+      }
+    }
+  }
+}

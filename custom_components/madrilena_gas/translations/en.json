@@ -1,0 +1,128 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Madrileña Red de Gas",
+        "description": "This integration receives consumption data over HTTP from a *bookmarklet* (a JavaScript favorite) that you click in your browser while logged into Madrileña's customer portal.\n\nEnter a name for this installation, the HTTPS URL of your Home Assistant, and the distribution parameters (people + climates + outdoor temperature). On confirmation you will see the bookmarklet code ready to copy in a persistent notification.",
+        "data": {
+          "name": "Installation name",
+          "ha_url": "Home Assistant HTTPS URL",
+          "people": "Number of people in the household",
+          "climate_entities": "Heating thermostats / climate entities",
+          "outdoor_temp_entity": "Outdoor temperature sensor or weather entity",
+          "hdd_base_c": "HDD base temperature (°C)",
+          "enable_cost": "Compute price (€) on top of consumption (m³)"
+        },
+        "data_description": {
+          "name": "Human-readable label for your sensors and device (e.g. \"Main house\"). The meter number remains the internal identifier and gets bound automatically the first time you click the bookmarklet.",
+          "ha_url": "Where the bookmarklet POSTs to your HA. Can be a local HTTPS URL (LAN IP or hostname) or public (Nabu Casa, DuckDNS, Cloudflare Tunnel…). It must be HTTPS — browsers block fetch HTTP from the portal (HTTPS). Default: {default_url}.",
+          "people": "Used to estimate DHW (domestic hot water) consumption. The more people, the more m³/day are assigned to DHW and the less to heating. If you live alone, set 1.",
+          "climate_entities": "If you have one or several thermostats in HA, select them. The integration counts how many hours they were demanding heat per hour and improves the bimonthly distribution. If none are selected, distribution is done only by outdoor temperature (HDD).",
+          "outdoor_temp_entity": "Any sensor.* of temperature or weather.* (e.g. weather.met_no by default). For days before HA's recorder history, Open-Meteo Archive (free, no API key) is used as a complement. If left empty, Open-Meteo is always used.",
+          "hdd_base_c": "Temperature below which heating is considered active. 18 °C is the Spanish standard (REE / IDAE). Only lower it if your house is very cold or you know what you're doing.",
+          "enable_cost": "If enabled, extra cost entities (€ accumulated, kWh accumulated) will be created and can be added to the Energy panel. If disabled, only m³ entities."
+        }
+      },
+      "cost": {
+        "title": "Cost parameters",
+        "description": "Madrileña is only the distributor; the gas price is set by your retailer (Endesa, Naturgy, TUR…). These two values are used to convert m³ to kWh and then to €.",
+        "data": {
+          "kwh_per_m3": "Conversion factor m³ → kWh (HHV)",
+          "price_eur_kwh": "Unit price €/kWh"
+        },
+        "data_description": {
+          "kwh_per_m3": "Higher Heating Value. In Spain Madrileña's average is around 11.70 kWh/m³ but varies ±2 % per quarter and per zone. It appears on your gas bill as \"Conversion coefficient\".",
+          "price_eur_kwh": "Unit price applied to the consumed energy. Find it on your last bill as \"Consumed energy\" divided by the kWh billed. Update it when you renegotiate your tariff."
+        }
+      }
+    },
+    "error": {
+      "missing_ha_url": "An HTTPS URL is required so the bookmarklet can POST from your browser.",
+      "invalid_ha_url": "The URL must start with http:// or https://. HTTPS recommended — browsers block fetch HTTP from the portal."
+    },
+    "abort": {
+      "reauth_not_supported": "There is no HA session to expire — data is supplied by your browser via the bookmarklet. If you need to rotate the token, delete this integration and add it again."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Madrileña Red de Gas",
+        "description": "Edit the distribution and cost parameters. Changes are applied on the next coordinator refresh (1 h or when a new reading arrives).",
+        "data": {
+          "people": "Number of people in the household",
+          "climate_entities": "Heating thermostats / climate entities",
+          "outdoor_temp_entity": "Outdoor temperature sensor or weather entity",
+          "hdd_base_c": "HDD base temperature (°C)",
+          "acs_m3_per_person_day": "Manual DHW (m³/person·day) — optional",
+          "enable_cost": "Compute price (€) on top of consumption (m³)",
+          "kwh_per_m3": "Conversion factor m³ → kWh (HHV)",
+          "price_eur_kwh": "Unit price €/kWh"
+        },
+        "data_description": {
+          "people": "Change this when someone moves in or out. DHW consumption is recalculated backwards on the next refresh.",
+          "climate_entities": "Empty = distribution by HDD only. If you add climates later, days without historical data still get distributed by HDD; new days use thermostat hours.",
+          "outdoor_temp_entity": "Empty = Open-Meteo Archive is always used. Useful if you have an outdoor probe you prefer over a generic weather entity.",
+          "hdd_base_c": "Below this temperature counts as a cold day. Standard 18 °C.",
+          "acs_m3_per_person_day": "By default the integration deduces this value from your summer periods (when gas is only used for hot water). If your usage is atypical (gym away, long vacations), put your preferred value here. Empty or 0 = automatic.",
+          "enable_cost": "If you disable it, the cost entities disappear when the integration reloads (the m³ sensors continue as before).",
+          "kwh_per_m3": "Appears on your gas bill as \"Conversion coefficient\". Spain ~11.70.",
+          "price_eur_kwh": "Find it on your last bill. Change it when you renegotiate your tariff."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "meter_reading": {
+        "name": "Meter reading"
+      },
+      "last_reading_date": {
+        "name": "Last reading"
+      },
+      "last_reading_type": {
+        "name": "Last reading type"
+      },
+      "last_period_total": {
+        "name": "Last period total"
+      },
+      "last_period_acs": {
+        "name": "Last period DHW"
+      },
+      "last_period_heating": {
+        "name": "Last period heating"
+      },
+      "acs_baseline": {
+        "name": "DHW baseline"
+      },
+      "last_ingest_at": {
+        "name": "Last update"
+      },
+      "data_age_days": {
+        "name": "Days since last reading"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh sensors",
+      "description": "Reprocesses the local cache and refreshes attributes. Does NOT download anything from the portal — for that you must click the bookmarklet in the browser.",
+      "fields": {
+        "instance": {
+          "name": "Installation",
+          "description": "Name or entry_id of a specific integration. Empty = all."
+        }
+      }
+    },
+    "show_bookmarklet": {
+      "name": "Show bookmarklet",
+      "description": "Re-displays the bookmarklet code in a persistent notification — useful if you closed it by accident.",
+      "fields": {
+        "instance": {
+          "name": "Installation",
+          "description": "Name or entry_id of the integration whose bookmarklet you want to see."
+        }
+      }
+    }
+  }
+}

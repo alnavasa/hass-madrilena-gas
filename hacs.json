@@ -1,0 +1,6 @@
+{
+  "name": "Madrileña Red de Gas",
+  "render_readme": true,
+  "homeassistant": "2024.1.0",
+  "country": ["ES"]
+}
