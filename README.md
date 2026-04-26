@@ -135,11 +135,12 @@ Una vez vinculado el contador (primer POST), por cada instalación aparecen:
 | `sensor.<nombre>_ultima_actualizacion` | timestamp | Cuándo el bookmarklet POSTeó por última vez. |
 | `sensor.<nombre>_dias_desde_ultima_lectura` | measurement, días | Recordatorio de cuándo refrescar. |
 
-Adicionalmente, **3 series de estadísticas externas** que el panel de Energía consume directamente:
+Adicionalmente, **estadísticas externas** que el panel de Energía consume directamente:
 
-- `madrilena_gas:total_<meter>`
-- `madrilena_gas:acs_<meter>`
-- `madrilena_gas:heating_<meter>`
+- `madrilena_gas:total_<meter>` — m³ totales
+- `madrilena_gas:acs_<meter>` — m³ ACS
+- `madrilena_gas:heating_<meter>` — m³ calefacción
+- `madrilena_gas:cost_<meter>` — **€ totales** (sólo si activaste el bloque de coste con `kwh_per_m3` y `price_eur_kwh`)
 
 ## Conectar al panel de Energía
 
@@ -149,9 +150,9 @@ Adicionalmente, **3 series de estadísticas externas** que el panel de Energía 
 |---|---|
 | **Consumo de gas** | Estadística externa **`madrilena_gas:total_<meter>`** (m³). El `<meter>` es el número del contador que ves en tu factura. |
 | **Caudal de gas** | Vacío. Madrileña sólo da factura bimensual; no hay caudal en tiempo real. |
-| **Costes** | Marca **"Usar un precio estático"** y mete tu **€/m³** = `kwh_per_m3 × price_eur_kwh` (ejemplo: 10.541 × 0.0870 = **0.917 €/m³**). |
+| **Costes** | Marca **"Utilizar una entidad que realiza un seguimiento de los costes totales"** → elige **`madrilena_gas:cost_<meter>`** (€). |
 
-> Si activaste el bloque de coste en la configuración de la integración, los valores `kwh_per_m3` y `price_eur_kwh` están en tu factura (apartado *Detalle de la facturación*).
+> El coste se calcula con `kwh_per_m3 × price_eur_kwh`. Ambos valores están en tu factura (apartado *Detalle de la facturación*) y los configuras al activar el bloque de coste en la integración.
 
 ## Configuración post-install
 

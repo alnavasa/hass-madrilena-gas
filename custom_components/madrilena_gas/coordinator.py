@@ -39,9 +39,12 @@ from .const import (
     CONF_ACS_M3_PER_PERSON_DAY,
     CONF_CLIMATE_AREAS_M2,
     CONF_CLIMATE_ENTITIES,
+    CONF_ENABLE_COST,
     CONF_HDD_BASE_C,
+    CONF_KWH_PER_M3,
     CONF_OUTDOOR_TEMP_ENTITY,
     CONF_PEOPLE,
+    CONF_PRICE_EUR_KWH,
     DEFAULT_HDD_BASE_C,
     DOMAIN,
     UPDATE_INTERVAL,
@@ -212,12 +215,19 @@ class MadrilenaGasCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # upserts by (statistic_id, start) so re-pushing the full
         # history is cheap and idempotent (Canal does the same).
         if distributions and self.store.meter_id:
+            cost_eur_per_m3: float | None = None
+            if opts.get(CONF_ENABLE_COST):
+                kwh_per_m3 = float(opts.get(CONF_KWH_PER_M3) or 0)
+                price_eur_kwh = float(opts.get(CONF_PRICE_EUR_KWH) or 0)
+                if kwh_per_m3 > 0 and price_eur_kwh > 0:
+                    cost_eur_per_m3 = kwh_per_m3 * price_eur_kwh
             try:
                 await push_distribution_streams(
                     self.hass,
                     meter_id=self.store.meter_id,
                     install_name=self.entry.title,
                     distributions=distributions,
+                    cost_eur_per_m3=cost_eur_per_m3,
                 )
             except Exception:
                 _LOGGER.exception("Statistics push failed; sensor data still valid")
