@@ -141,6 +141,18 @@ Adicionalmente, **3 series de estadísticas externas** que el panel de Energía 
 - `madrilena_gas:acs_<meter>`
 - `madrilena_gas:heating_<meter>`
 
+## Conectar al panel de Energía
+
+**Ajustes → Tableros → Energía → Añadir consumo de gas:**
+
+| Campo | Qué meter |
+|---|---|
+| **Consumo de gas** | Estadística externa **`madrilena_gas:total_<meter>`** (m³). El `<meter>` es el número del contador que ves en tu factura. |
+| **Caudal de gas** | Vacío. Madrileña sólo da factura bimensual; no hay caudal en tiempo real. |
+| **Costes** | Marca **"Usar un precio estático"** y mete tu **€/m³** = `kwh_per_m3 × price_eur_kwh` (ejemplo: 10.541 × 0.0870 = **0.917 €/m³**). |
+
+> Si activaste el bloque de coste en la configuración de la integración, los valores `kwh_per_m3` y `price_eur_kwh` están en tu factura (apartado *Detalle de la facturación*).
+
 ## Configuración post-install
 
 **Ajustes → Dispositivos y servicios → Madrileña Red de Gas → Configurar.**
