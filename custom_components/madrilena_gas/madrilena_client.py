@@ -43,6 +43,11 @@ _LOGGER = logging.getLogger(__name__)
 # the canonical "I'm authenticated" sentinel.
 _DASHBOARD_PATH = "/situacion-global"
 
+# Path the portal lands on when MFA is required (untrusted device).
+# Captured by probe_login.py: POST /login → 302 → GET /2fa/verify, which
+# renders a form posting back to /2fa/verify with field `two_factor_code`.
+_MFA_PATH = "/2fa/verify"
+
 # What we send as a browser. Some Laravel apps key off the UA — the
 # probe used a custom UA and the portal accepted it, but a Firefox-ish
 # UA is the safest default.
@@ -107,12 +112,19 @@ class LoginContext:
     config-flow / autopilot can persist it directly and skip the OTP
     step. When MFA *is* required the OTP-related fields are populated
     instead.
+
+    ``pending_cookies`` carries the in-flight cookie jar from the
+    ``begin_login`` call so the next ``submit_otp`` can rehydrate a
+    fresh ``aiohttp.ClientSession``. The HA config-flow doesn't keep
+    one session alive across UI steps (the user-facing form runs in
+    between), so we serialise the jar here.
     """
 
     csrf_token: str = ""
     otp_action_url: str = ""
     otp_field_name: str = ""
     session_payload: "SessionPayload | None" = None
+    pending_cookies: dict[str, str] = field(default_factory=dict)
 
     @property
     def needs_otp(self) -> bool:
@@ -235,6 +247,25 @@ class MadrilenaClient:
                 "Portal devolvió 419 (CSRF) — reintentar con sesión limpia",
             )
 
+        # MFA path takes priority over the dashboard heuristic, since
+        # /2fa/verify is technically "authenticated" by Laravel's middleware.
+        if final_path == _MFA_PATH or final_path.startswith("/2fa"):
+            otp_form = _find_otp_form(post_html)
+            if not otp_form:
+                raise MadrilenaClientError(
+                    f"Portal redirigió a {final_path} pero no se encontró el "
+                    "formulario OTP — el portal cambió",
+                )
+            action = otp_form["action"] or f"{self._base_url}{_MFA_PATH}"
+            if action.startswith("/"):
+                action = self._base_url + action
+            return LoginContext(
+                csrf_token=otp_form["csrf"] or form_token,
+                otp_action_url=action,
+                otp_field_name=otp_form["otp_field"],
+                pending_cookies=self._snapshot_cookies(),
+            )
+
         # Trusted-device path: portal redirected straight into the dashboard.
         if final_path == _DASHBOARD_PATH or _is_authenticated_path(final_path):
             payload = self.export_session()
@@ -242,11 +273,12 @@ class MadrilenaClient:
             payload.csrf_token = new_csrf
             return LoginContext(csrf_token=new_csrf or "", session_payload=payload)
 
-        # Still on /login? Two sub-cases.
+        # Still on /login? Either an OTP form is rendered inline (rare —
+        # current portal redirects to /2fa/verify instead) or the login
+        # form is re-rendered → bad credentials.
         if final_path == "/login":
             otp_form = _find_otp_form(post_html)
             if otp_form:
-                # MFA required — caller must drive submit_otp next.
                 action = otp_form["action"] or f"{self._base_url}/login"
                 if action.startswith("/"):
                     action = self._base_url + action
@@ -254,9 +286,9 @@ class MadrilenaClient:
                     csrf_token=otp_form["csrf"] or form_token,
                     otp_action_url=action,
                     otp_field_name=otp_form["otp_field"],
+                    pending_cookies=self._snapshot_cookies(),
                 )
             if _LOGIN_FORM_RE.search(post_html):
-                # Login form re-rendered → bad creds.
                 raise InvalidCredentials("DNI o contraseña incorrectos")
 
         # Anything else: unknown layout, surface as plain error.
@@ -284,6 +316,16 @@ class MadrilenaClient:
                 "El flujo OTP no está completamente capturado todavía. "
                 "Cuando Madrileña te pida un OTP, vuelve a ejecutar "
                 "probe_login.py para que el script vea el formulario.",
+            )
+
+        # Re-hydrate the cookie jar from the LoginContext snapshot.
+        # The HA config-flow opens a fresh aiohttp.ClientSession for
+        # each step, so without this our XSRF-TOKEN would be missing
+        # and Laravel would 419 the OTP submit.
+        if ctx.pending_cookies:
+            url = URL(self._base_url)
+            self._session.cookie_jar.update_cookies(
+                ctx.pending_cookies, response_url=url,
             )
 
         xsrf_cookie = self._cookie_value("XSRF-TOKEN")
@@ -401,6 +443,9 @@ class MadrilenaClient:
                 return cookie.value
         return ""
 
+    def _snapshot_cookies(self) -> dict[str, str]:
+        return {cookie.key: cookie.value for cookie in self._session.cookie_jar}
+
 
 # ----------------------------------------------------------------------
 # Module-level helpers
@@ -453,7 +498,14 @@ def _find_otp_form(html: str) -> dict[str, str] | None:
                 )
                 if csrf_match:
                     csrf = csrf_match.group(1)
-            elif name.lower() in ("otp", "code", "codigo", "verification_code", "token"):
+            elif name.lower() in (
+                "otp",
+                "code",
+                "codigo",
+                "verification_code",
+                "two_factor_code",
+                "token",
+            ):
                 otp_field = name
         if otp_field:
             return {"action": action, "csrf": csrf, "otp_field": otp_field}
