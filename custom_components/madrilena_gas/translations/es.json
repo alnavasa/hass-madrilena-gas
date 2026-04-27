@@ -30,14 +30,34 @@
       },
       "cost": {
         "title": "Parámetros de coste",
-        "description": "Madrileña es solo distribuidora; el precio del gas lo pone tu comercializadora (Endesa, Naturgy, TUR…). Estos dos datos se usan para convertir m³ a kWh y luego a €.",
+        "description": "Madrileña es solo distribuidora; el precio del gas lo pone tu comercializadora (Endesa, Naturgy, TUR…). Elige el modo:\n\n- **Sencillo**: un único precio €/kWh \"todo incluido\" (con IVA). Solo cuadra si tu consumo se mantiene constante; en meses muy fríos o muy templados desviará bastante porque ignora el término fijo.\n- **Avanzado**: introduce término fijo €/día, alquiler €/mes, IEH €/kWh, IVA % y descuento % por separado. Es lo que hace falta para reproducir el total de la factura.",
         "data": {
+          "cost_mode": "Modo de cálculo",
           "kwh_per_m3": "Factor de conversión m³ → kWh (PCS)",
-          "price_eur_kwh": "Precio unitario €/kWh"
+          "price_eur_kwh": "Precio €/kWh del término variable"
         },
         "data_description": {
+          "cost_mode": "**Sencillo** = `precio × kWh × m³`, sin IVA ni término fijo. **Avanzado** = se aplica la fórmula completa de la factura española (variable + fijo + alquiler + IEH + descuento + IVA).",
           "kwh_per_m3": "Poder Calorífico Superior. En España el valor medio de Madrileña ronda 11,70 kWh/m³ pero varía ±2 % por trimestre y por zona. Aparece en tu factura de gas como \"Coeficiente de conversión\".",
-          "price_eur_kwh": "Precio unitario aplicado a la energía consumida. Búscalo en la última factura como \"Energía consumida\" dividido entre los kWh facturados. Cambia cuando renegocies tarifa."
+          "price_eur_kwh": "**Modo sencillo**: el precio total \"todo incluido\" (IVA, fijo, etc. promediados). **Modo avanzado**: el precio del *Término Energía Gas* tal cual aparece en la factura, **sin IVA**."
+        }
+      },
+      "cost_advanced": {
+        "title": "Coste avanzado — desglose factura",
+        "description": "Estos cinco campos reproducen la factura española de gas. Defaults pensados para Endesa Tarifa One Gas RL.2 + IVA reducido 10 % (gas natural). Cámbialos si tu comercializadora difiere.",
+        "data": {
+          "term_fijo_eur_dia": "Término fijo (€/día)",
+          "alquiler_eur_mes": "Alquiler de equipos (€/mes)",
+          "ieh_eur_kwh": "Impuesto Especial sobre Hidrocarburos (€/kWh)",
+          "iva_pct": "IVA aplicable (%)",
+          "descuento_pct": "Descuento promocional sobre el variable (%)"
+        },
+        "data_description": {
+          "term_fijo_eur_dia": "Aparece en la factura como \"Término Fijo Gas X días × Y €/día\". Sin IVA. Se cobra consumas o no.",
+          "alquiler_eur_mes": "Aparece como \"Alquiler de Equipos Gas\". Sin IVA. Se divide entre 30 para repartirlo por días.",
+          "ieh_eur_kwh": "Tasa nacional sobre hidrocarburos para gas natural — 0,001080 €/kWh en 2026. Sin IVA.",
+          "iva_pct": "El gas natural en España va al **IVA reducido 10 %** desde 2022 (no 21 %). Cámbialo si la normativa varía.",
+          "descuento_pct": "Suma todos los descuentos promocionales que se aplican al término variable (los \"-10 %\" de Tarifa One de Endesa, etc.). Pon `20` si tienes dos descuentos del 10 %."
         }
       }
     },
@@ -108,8 +128,9 @@
           "hdd_base_c": "Temperatura base HDD (°C)",
           "acs_m3_per_person_day": "ACS manual (m³/persona·día) — opcional",
           "enable_cost": "Calcular precio (€) además del consumo (m³)",
+          "cost_mode": "Modo de cálculo de coste",
           "kwh_per_m3": "Factor de conversión m³ → kWh (PCS)",
-          "price_eur_kwh": "Precio unitario €/kWh",
+          "price_eur_kwh": "Precio €/kWh del término variable",
           "autopilot_enabled": "Autopilot — descargar lecturas automáticamente (experimental)"
         },
         "data_description": {
@@ -119,9 +140,28 @@
           "hdd_base_c": "Por debajo de esta temperatura cuenta como día frío. Estándar 18 °C.",
           "acs_m3_per_person_day": "Por defecto la integración deduce este valor de tus periodos de verano (cuando solo se gasta gas para agua caliente). Si tu uso es atípico (gimnasio fuera, vacaciones largas), pon aquí el valor que prefieras. Vacío o 0 = automático.",
           "enable_cost": "Si lo desactivas, las entidades de coste desaparecen al recargar la integración (los sensores de m³ siguen igual).",
+          "cost_mode": "**Sencillo** = `precio × kWh × m³`, sin IVA ni término fijo (sirve para tendencia). **Avanzado** = fórmula completa de la factura española (variable + fijo + alquiler + IEH + descuento + IVA), te pedirá los cinco campos en el siguiente paso.",
           "kwh_per_m3": "Aparece en tu factura de gas como \"Coeficiente de conversión\". España ~11,70.",
-          "price_eur_kwh": "Búscalo en la última factura. Cambia cuando renegocies tarifa.",
+          "price_eur_kwh": "**Sencillo**: precio \"todo incluido\". **Avanzado**: el precio del *Término Energía Gas* sin IVA, tal cual lo lees en la factura.",
           "autopilot_enabled": "**EXPERIMENTAL — pendiente de implementación.** Si lo activas, HA iniciará sesión por su cuenta y descargará /consumos cada ~40 min. La primera vez que se active te pedirá DNI + contraseña + un OTP por email. Cuando caduque la sesión te notificará para que reintroduzcas el OTP. Si lo dejas desactivado (default), todo funciona como en v0.1.x con el bookmarklet manual."
+        }
+      },
+      "cost_advanced": {
+        "title": "Coste avanzado — desglose factura",
+        "description": "Estos cinco campos reproducen la factura española de gas. Defaults pensados para Endesa Tarifa One Gas RL.2 + IVA reducido 10 % (gas natural). Cámbialos si tu comercializadora difiere.",
+        "data": {
+          "term_fijo_eur_dia": "Término fijo (€/día)",
+          "alquiler_eur_mes": "Alquiler de equipos (€/mes)",
+          "ieh_eur_kwh": "Impuesto Especial sobre Hidrocarburos (€/kWh)",
+          "iva_pct": "IVA aplicable (%)",
+          "descuento_pct": "Descuento promocional sobre el variable (%)"
+        },
+        "data_description": {
+          "term_fijo_eur_dia": "Aparece en la factura como \"Término Fijo Gas X días × Y €/día\". Sin IVA. Se cobra consumas o no.",
+          "alquiler_eur_mes": "Aparece como \"Alquiler de Equipos Gas\". Sin IVA. Se divide entre 30 para repartirlo por días.",
+          "ieh_eur_kwh": "Tasa nacional sobre hidrocarburos para gas natural — 0,001080 €/kWh en 2026. Sin IVA.",
+          "iva_pct": "El gas natural en España va al **IVA reducido 10 %** desde 2022 (no 21 %). Cámbialo si la normativa varía.",
+          "descuento_pct": "Suma todos los descuentos promocionales que se aplican al término variable (los \"-10 %\" de Tarifa One de Endesa, etc.). Pon `20` si tienes dos descuentos del 10 %."
         }
       }
     },

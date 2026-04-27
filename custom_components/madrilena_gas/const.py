@@ -93,9 +93,51 @@ CONF_KWH_PER_M3 = "kwh_per_m3"
 DEFAULT_KWH_PER_M3 = 11.70
 
 #: User-configured marginal price in €/kWh (TUR or commercializadora
-#: rate). Full bill modelling (term fijo, peaje, IVA) deferred to a
-#: future version — keep v0.1 simple.
+#: rate). Interpretation depends on ``CONF_COST_MODE``:
+#:
+#: * ``"simple"`` — treat as the all-in €/kWh (IVA included). The
+#:   integration multiplies it by ``kwh_per_m3 × m³`` and stops there.
+#:   No fixed term, no rental, no IEH, no IVA arithmetic. Use this
+#:   when the user just wants a rough cost trend.
+#: * ``"advanced"`` — treat as the variable €/kWh **without IVA**, as
+#:   it appears on the invoice (Endesa "Término Energía Gas"). The
+#:   integration adds the fixed term, meter rental, IEH and IVA on
+#:   top to reproduce the bill total.
 CONF_PRICE_EUR_KWH = "price_eur_kwh"
+
+#: ``"simple"`` (default) keeps v0.2.4 behaviour: ``price_eur_kwh × m³``.
+#: ``"advanced"`` enables the full Spanish gas-bill formula with fixed
+#: term, meter rental, IEH and IVA — the only mode that actually matches
+#: the invoice total.
+CONF_COST_MODE = "cost_mode"
+COST_MODE_SIMPLE = "simple"
+COST_MODE_ADVANCED = "advanced"
+
+#: Término fijo gas (Eur/día). On the Endesa "Tarifa One Gas" RL.2 peaje
+#: it lands around 0,46 €/día (2026). Pre-IVA, pre-discount.
+CONF_TERM_FIJO_EUR_DIA = "term_fijo_eur_dia"
+
+#: Alquiler de equipos / contador (Eur/mes). Madrileña Red de Gas charges
+#: a residential meter rental at roughly 0,58 €/mes; the integration
+#: divides by 30 to get a per-day contribution. Pre-IVA.
+CONF_ALQUILER_EUR_MES = "alquiler_eur_mes"
+
+#: Impuesto Especial sobre Hidrocarburos (Eur/kWh). Fixed nationally for
+#: gas natural — 0,001080 €/kWh as of 2026. Pre-IVA.
+CONF_IEH_EUR_KWH = "ieh_eur_kwh"
+DEFAULT_IEH_EUR_KWH = 0.00108
+
+#: IVA aplicable. Spanish natural gas uses the *reduced* 10 % rate (not
+#: the standard 21 %). Default reflects that; user can override if rules
+#: change.
+CONF_IVA_PCT = "iva_pct"
+DEFAULT_IVA_PCT = 10.0
+
+#: Promotional discount (%) applied to the variable term only. Endesa's
+#: "Tarifa One" comes with a stack of -10 % discounts; sum them and put
+#: the total here (e.g. 20 for two stacked -10 % lines).
+CONF_DESCUENTO_PCT = "descuento_pct"
+DEFAULT_DESCUENTO_PCT = 0.0
 
 # ---------------------------------------------------------------------
 # Defaults

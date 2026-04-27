@@ -152,7 +152,36 @@ Adicionalmente, **estadísticas externas** que el panel de Energía consume dire
 | **Caudal de gas** | Vacío. Madrileña sólo da factura bimensual; no hay caudal en tiempo real. |
 | **Costes** | Marca **"Utilizar una entidad que realiza un seguimiento de los costes totales"** → elige **`madrilena_gas:cost_<meter>`** (€). |
 
-> El coste se calcula con `kwh_per_m3 × price_eur_kwh`. Ambos valores están en tu factura (apartado *Detalle de la facturación*) y los configuras al activar el bloque de coste en la integración.
+### Modos de cálculo de coste
+
+Al activar el bloque de coste eliges entre dos modos:
+
+#### Modo sencillo (default)
+
+Un solo precio €/kWh "todo incluido". Cálculo: `kwh_per_m3 × price_eur_kwh × m³`. **No aplica IVA, ni término fijo, ni alquiler de equipos** — útil para tendencia rápida pero **se desvía** del total facturado cuando varía el consumo (en meses templados el término fijo pesa proporcionalmente más; en meses fríos se diluye).
+
+Para que se acerque al total, mete un precio promedio "todo incluido" calculado a mano: `total_factura / kWh_consumidos`.
+
+#### Modo avanzado
+
+Reproduce la **factura española de gas natural**. Cinco campos extra:
+
+| Campo | Qué es | Dónde sale en la factura |
+|---|---|---|
+| `term_fijo_eur_dia` | Término fijo €/día | "Término Fijo Gas X días × Y €/día" |
+| `alquiler_eur_mes` | Alquiler de equipos €/mes | "Alquiler de Equipos Gas" (si viene total bimestre, divide entre 2) |
+| `ieh_eur_kwh` | Impuesto Especial sobre Hidrocarburos €/kWh | "Impto.HC general" (default 0,001080 €/kWh, fijo en España 2026) |
+| `iva_pct` | IVA aplicable | El gas natural va al **10 % reducido** desde 2022 (no 21 %) |
+| `descuento_pct` | Descuento promocional sobre el variable | Suma todos los "-X %" de tu tarifa (ej. dos -10 % apilados → `20`) |
+
+Fórmula:
+
+```
+cost_per_m3  = (price + ieh) × kwh_per_m3 × (1 - desc/100) × (1 + iva/100)
+cost_per_day = (fijo + alquiler/30)                       × (1 + iva/100)
+```
+
+El `cost_per_day` se acumula en cada día del calendario (consumas o no), igual que el término fijo en la factura. En modo avanzado `price_eur_kwh` debe ser el del **Término Energía Gas sin IVA** tal cual aparece en la factura — la integración aplica IVA y descuento por su cuenta.
 
 ## Configuración post-install
 
@@ -164,7 +193,7 @@ Puedes editar:
 - Climates / sensor exterior / HDD base.
 - **Metros² por zona** (segundo paso, sólo si hay al menos un `climate.*` o `binary_sensor.*` marcado). Pondera el reparto entre zonas — deja `1` en todas para reparto por cuenta de zonas.
 - Override manual del baseline ACS (en m³/persona·día), si tu uso es atípico.
-- Activar/desactivar entidades de coste y editar `kWh/m³` y `€/kWh`.
+- Activar/desactivar entidades de coste y editar `kWh/m³`, `€/kWh` y los cinco campos del modo avanzado (fijo, alquiler, IEH, IVA, descuento).
 
 Los cambios se aplican en el siguiente refresco del coordinador (1 h o cuando llegue una lectura nueva).
 

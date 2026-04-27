@@ -37,15 +37,26 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .acs import AcsBaseline, derive_acs_baseline
 from .const import (
     CONF_ACS_M3_PER_PERSON_DAY,
+    CONF_ALQUILER_EUR_MES,
     CONF_CLIMATE_AREAS_M2,
     CONF_CLIMATE_ENTITIES,
+    CONF_COST_MODE,
+    CONF_DESCUENTO_PCT,
     CONF_ENABLE_COST,
     CONF_HDD_BASE_C,
+    CONF_IEH_EUR_KWH,
+    CONF_IVA_PCT,
     CONF_KWH_PER_M3,
     CONF_OUTDOOR_TEMP_ENTITY,
     CONF_PEOPLE,
     CONF_PRICE_EUR_KWH,
+    CONF_TERM_FIJO_EUR_DIA,
+    COST_MODE_ADVANCED,
+    COST_MODE_SIMPLE,
+    DEFAULT_DESCUENTO_PCT,
     DEFAULT_HDD_BASE_C,
+    DEFAULT_IEH_EUR_KWH,
+    DEFAULT_IVA_PCT,
     DOMAIN,
     UPDATE_INTERVAL,
 )
@@ -215,19 +226,15 @@ class MadrilenaGasCoordinator(DataUpdateCoordinator[CoordinatorData]):
         # upserts by (statistic_id, start) so re-pushing the full
         # history is cheap and idempotent (Canal does the same).
         if distributions and self.store.meter_id:
-            cost_eur_per_m3: float | None = None
-            if opts.get(CONF_ENABLE_COST):
-                kwh_per_m3 = float(opts.get(CONF_KWH_PER_M3) or 0)
-                price_eur_kwh = float(opts.get(CONF_PRICE_EUR_KWH) or 0)
-                if kwh_per_m3 > 0 and price_eur_kwh > 0:
-                    cost_eur_per_m3 = kwh_per_m3 * price_eur_kwh
+            cost_per_m3, cost_per_day = self._cost_coefficients(opts)
             try:
                 await push_distribution_streams(
                     self.hass,
                     meter_id=self.store.meter_id,
                     install_name=self.entry.title,
                     distributions=distributions,
-                    cost_eur_per_m3=cost_eur_per_m3,
+                    cost_per_m3=cost_per_m3,
+                    cost_per_day=cost_per_day,
                 )
             except Exception:
                 _LOGGER.exception("Statistics push failed; sensor data still valid")
@@ -239,6 +246,53 @@ class MadrilenaGasCoordinator(DataUpdateCoordinator[CoordinatorData]):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _cost_coefficients(opts: dict) -> tuple[float | None, float]:
+        """Resolve the (€/m³, €/día) pair for the EUR statistic stream.
+
+        Returns ``(None, 0.0)`` when cost tracking is off or essential
+        inputs are missing — the push layer reads ``None`` as "skip".
+
+        * **Simple mode** — ``price_eur_kwh`` is the all-in €/kWh; multiply
+          by the PCS factor and stop. No fixed term, no IVA arithmetic.
+          Cost ≈ proportional to consumption.
+        * **Advanced mode** — apply the Spanish gas-bill formula:
+
+              cost_per_m3 = (price + IEH) × kwh/m³ × (1 - desc/100) × (1 + IVA/100)
+              cost_per_day = (fijo + alquiler/30) × (1 + IVA/100)
+
+          Discount applies only to the variable term (mirrors how Endesa
+          prints "Descuento promocional -X % x <variable>" on the
+          invoice). IVA applies to the whole subtotal — the reduced 10 %
+          gas rate by default, override-able if the law changes.
+        """
+        if not opts.get(CONF_ENABLE_COST):
+            return None, 0.0
+
+        kwh_per_m3 = float(opts.get(CONF_KWH_PER_M3) or 0)
+        price_eur_kwh = float(opts.get(CONF_PRICE_EUR_KWH) or 0)
+        if kwh_per_m3 <= 0 or price_eur_kwh <= 0:
+            return None, 0.0
+
+        mode = opts.get(CONF_COST_MODE) or COST_MODE_SIMPLE
+        if mode != COST_MODE_ADVANCED:
+            return price_eur_kwh * kwh_per_m3, 0.0
+
+        ieh = float(opts.get(CONF_IEH_EUR_KWH) or DEFAULT_IEH_EUR_KWH)
+        fijo_dia = float(opts.get(CONF_TERM_FIJO_EUR_DIA) or 0)
+        alquiler_mes = float(opts.get(CONF_ALQUILER_EUR_MES) or 0)
+        iva_pct = float(opts.get(CONF_IVA_PCT) or DEFAULT_IVA_PCT)
+        desc_pct = float(opts.get(CONF_DESCUENTO_PCT) or DEFAULT_DESCUENTO_PCT)
+
+        iva_mult = 1.0 + iva_pct / 100.0
+        discount_mult = 1.0 - desc_pct / 100.0
+
+        variable_per_m3 = price_eur_kwh * kwh_per_m3 * discount_mult
+        ieh_per_m3 = ieh * kwh_per_m3
+        cost_per_m3 = (variable_per_m3 + ieh_per_m3) * iva_mult
+        cost_per_day = (fijo_dia + alquiler_mes / 30.0) * iva_mult
+        return cost_per_m3, cost_per_day
 
     def _compute_signature(self, readings: list[Reading], opts: dict) -> tuple:
         """A cheap-to-hash key that changes whenever the snapshot would.
@@ -257,6 +311,15 @@ class MadrilenaGasCoordinator(DataUpdateCoordinator[CoordinatorData]):
             opts.get(CONF_OUTDOOR_TEMP_ENTITY),
             tuple(sorted(opts.get(CONF_CLIMATE_ENTITIES) or [])),
             tuple(sorted((opts.get(CONF_CLIMATE_AREAS_M2) or {}).items())),
+            opts.get(CONF_ENABLE_COST),
+            opts.get(CONF_COST_MODE),
+            opts.get(CONF_KWH_PER_M3),
+            opts.get(CONF_PRICE_EUR_KWH),
+            opts.get(CONF_TERM_FIJO_EUR_DIA),
+            opts.get(CONF_ALQUILER_EUR_MES),
+            opts.get(CONF_IEH_EUR_KWH),
+            opts.get(CONF_IVA_PCT),
+            opts.get(CONF_DESCUENTO_PCT),
         )
 
     async def _weather_for_period(

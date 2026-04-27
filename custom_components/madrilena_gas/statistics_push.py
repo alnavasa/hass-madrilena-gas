@@ -28,7 +28,11 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .models import DistributionResult
-from .statistics_helpers import daily_to_cumulative_streams, statistic_id
+from .statistics_helpers import (
+    daily_to_cost_stream,
+    daily_to_cumulative_streams,
+    statistic_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,13 +43,22 @@ async def push_distribution_streams(
     meter_id: str,
     install_name: str,
     distributions: list[DistributionResult],
-    cost_eur_per_m3: float | None = None,
+    cost_per_m3: float | None = None,
+    cost_per_day: float = 0.0,
 ) -> None:
     """Build and upsert all cumulative streams in one sweep.
 
-    If ``cost_eur_per_m3`` is provided (typically
-    ``kwh_per_m3 × price_eur_kwh``), an extra cost stream is pushed in
-    EUR. Pass ``None`` to skip cost tracking.
+    Cost is pushed when ``cost_per_m3 is not None``. The two coefficients
+    let the simple and advanced modes share one push path:
+
+    * **Simple** — caller passes ``cost_per_m3 = price_eur_kwh × kwh_per_m3``
+      and ``cost_per_day = 0``. Cost ≈ proportional to consumption.
+    * **Advanced** — caller passes both, with ``cost_per_day`` already
+      including término fijo + alquiler / 30 + IVA. The fixed-per-day
+      component accrues on every civil day, even zero-consumption ones,
+      reproducing the bill structure.
+
+    Pass ``cost_per_m3 = None`` to skip cost tracking entirely.
     """
     if not distributions:
         return
@@ -63,12 +76,16 @@ async def push_distribution_streams(
         ("heating", heating_stream, "Calefacción", UnitOfVolume.CUBIC_METERS),
     ]
 
-    if cost_eur_per_m3 is not None and cost_eur_per_m3 > 0:
-        cost_stream = [
-            (start_utc, round(cum_m3 * cost_eur_per_m3, 4))
-            for start_utc, cum_m3 in total_stream
-        ]
-        streams.append(("cost", cost_stream, "Coste total", "EUR"))
+    push_cost = cost_per_m3 is not None and (cost_per_m3 > 0 or cost_per_day > 0)
+    if push_cost:
+        cost_stream = daily_to_cost_stream(
+            distributions,
+            tz=tz,
+            cost_per_m3=float(cost_per_m3 or 0.0),
+            cost_per_day=float(cost_per_day or 0.0),
+        )
+        if cost_stream:
+            streams.append(("cost", cost_stream, "Coste total", "EUR"))
 
     for suffix, stream, friendly, unit in streams:
         if not stream:

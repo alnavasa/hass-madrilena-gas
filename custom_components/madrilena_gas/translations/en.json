@@ -30,14 +30,34 @@
       },
       "cost": {
         "title": "Cost parameters",
-        "description": "Madrileña is only the distributor; the gas price is set by your retailer (Endesa, Naturgy, TUR…). These two values are used to convert m³ to kWh and then to €.",
+        "description": "Madrileña is only the distributor; the gas price is set by your retailer (Endesa, Naturgy, TUR…). Pick a mode:\n\n- **Simple**: a single all-in €/kWh (with VAT). Only matches when consumption is roughly constant; very cold or very mild months will drift because it ignores the standing charge.\n- **Advanced**: enter standing charge €/day, meter rental €/month, hydrocarbon tax €/kWh, VAT % and discount % separately. This is what's needed to reproduce the bill total.",
         "data": {
+          "cost_mode": "Calculation mode",
           "kwh_per_m3": "Conversion factor m³ → kWh (HHV)",
-          "price_eur_kwh": "Unit price €/kWh"
+          "price_eur_kwh": "Variable-term price €/kWh"
         },
         "data_description": {
+          "cost_mode": "**Simple** = `price × kWh × m³`, no VAT, no fixed term. **Advanced** = full Spanish gas-bill formula (variable + fixed + rental + IEH + discount + VAT).",
           "kwh_per_m3": "Higher Heating Value. In Spain Madrileña's average is around 11.70 kWh/m³ but varies ±2 % per quarter and per zone. It appears on your gas bill as \"Conversion coefficient\".",
-          "price_eur_kwh": "Unit price applied to the consumed energy. Find it on your last bill as \"Consumed energy\" divided by the kWh billed. Update it when you renegotiate your tariff."
+          "price_eur_kwh": "**Simple mode**: the all-in unit price (VAT and fixed term averaged in). **Advanced mode**: the *Energy Term* price as printed on the bill, **without VAT**."
+        }
+      },
+      "cost_advanced": {
+        "title": "Advanced cost — bill breakdown",
+        "description": "These five fields reproduce the Spanish gas-bill structure. Defaults track Endesa Tarifa One Gas RL.2 + reduced 10 % VAT (natural gas). Override if your retailer differs.",
+        "data": {
+          "term_fijo_eur_dia": "Standing charge (€/day)",
+          "alquiler_eur_mes": "Meter rental (€/month)",
+          "ieh_eur_kwh": "Hydrocarbon tax IEH (€/kWh)",
+          "iva_pct": "VAT (%)",
+          "descuento_pct": "Promotional discount on variable term (%)"
+        },
+        "data_description": {
+          "term_fijo_eur_dia": "Appears on the bill as \"Término Fijo Gas X días × Y €/día\". Pre-VAT. Charged regardless of consumption.",
+          "alquiler_eur_mes": "Appears as \"Alquiler de Equipos Gas\". Pre-VAT. Divided by 30 to spread across days.",
+          "ieh_eur_kwh": "Spanish national hydrocarbon tax for natural gas — 0.001080 €/kWh in 2026. Pre-VAT.",
+          "iva_pct": "Natural gas in Spain falls under the **reduced 10 % VAT rate** since 2022 (not 21 %). Override if rules change.",
+          "descuento_pct": "Sum of all promotional discounts applied to the variable term (the \"-10 %\" lines from Endesa's Tarifa One, etc.). Use `20` if you have two stacked -10 % discounts."
         }
       }
     },
@@ -108,8 +128,9 @@
           "hdd_base_c": "HDD base temperature (°C)",
           "acs_m3_per_person_day": "Manual DHW (m³/person·day) — optional",
           "enable_cost": "Compute price (€) on top of consumption (m³)",
+          "cost_mode": "Cost calculation mode",
           "kwh_per_m3": "Conversion factor m³ → kWh (HHV)",
-          "price_eur_kwh": "Unit price €/kWh",
+          "price_eur_kwh": "Variable-term price €/kWh",
           "autopilot_enabled": "Autopilot — fetch readings automatically (experimental)"
         },
         "data_description": {
@@ -119,9 +140,28 @@
           "hdd_base_c": "Below this temperature counts as a cold day. Standard 18 °C.",
           "acs_m3_per_person_day": "By default the integration deduces this value from your summer periods (when gas is only used for hot water). If your usage is atypical (gym away, long vacations), put your preferred value here. Empty or 0 = automatic.",
           "enable_cost": "If you disable it, the cost entities disappear when the integration reloads (the m³ sensors continue as before).",
+          "cost_mode": "**Simple** = `price × kWh × m³`, no VAT or fixed term (good for trend). **Advanced** = full Spanish gas-bill formula (variable + fixed + rental + IEH + discount + VAT); the next step asks for the five extra fields.",
           "kwh_per_m3": "Appears on your gas bill as \"Conversion coefficient\". Spain ~11.70.",
-          "price_eur_kwh": "Find it on your last bill. Change it when you renegotiate your tariff.",
+          "price_eur_kwh": "**Simple**: all-in price. **Advanced**: the *Energy Term* price as printed on the bill, without VAT.",
           "autopilot_enabled": "**EXPERIMENTAL — implementation pending.** When enabled, HA logs in on its own and fetches /consumos every ~40 min. On first activation it asks for DNI + password + an OTP by email. When the session eventually lapses it notifies you to re-enter the OTP. If left disabled (default), everything works exactly like v0.1.x with the manual bookmarklet."
+        }
+      },
+      "cost_advanced": {
+        "title": "Advanced cost — bill breakdown",
+        "description": "These five fields reproduce the Spanish gas-bill structure. Defaults track Endesa Tarifa One Gas RL.2 + reduced 10 % VAT (natural gas). Override if your retailer differs.",
+        "data": {
+          "term_fijo_eur_dia": "Standing charge (€/day)",
+          "alquiler_eur_mes": "Meter rental (€/month)",
+          "ieh_eur_kwh": "Hydrocarbon tax IEH (€/kWh)",
+          "iva_pct": "VAT (%)",
+          "descuento_pct": "Promotional discount on variable term (%)"
+        },
+        "data_description": {
+          "term_fijo_eur_dia": "Appears on the bill as \"Término Fijo Gas X días × Y €/día\". Pre-VAT. Charged regardless of consumption.",
+          "alquiler_eur_mes": "Appears as \"Alquiler de Equipos Gas\". Pre-VAT. Divided by 30 to spread across days.",
+          "ieh_eur_kwh": "Spanish national hydrocarbon tax for natural gas — 0.001080 €/kWh in 2026. Pre-VAT.",
+          "iva_pct": "Natural gas in Spain falls under the **reduced 10 % VAT rate** since 2022 (not 21 %). Override if rules change.",
+          "descuento_pct": "Sum of all promotional discounts applied to the variable term (the \"-10 %\" lines from Endesa's Tarifa One, etc.). Use `20` if you have two stacked -10 % discounts."
         }
       }
     },

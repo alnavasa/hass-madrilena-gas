@@ -48,17 +48,25 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
 )
 
 from .const import (
     CONF_ACS_M3_PER_PERSON_DAY,
+    CONF_ALQUILER_EUR_MES,
     CONF_AUTOPILOT_ENABLED,
     CONF_CLIMATE_AREAS_M2,
     CONF_CLIMATE_ENTITIES,
+    CONF_COST_MODE,
+    CONF_DESCUENTO_PCT,
     CONF_DNI,
     CONF_ENABLE_COST,
     CONF_HA_URL,
     CONF_HDD_BASE_C,
+    CONF_IEH_EUR_KWH,
+    CONF_IVA_PCT,
     CONF_KWH_PER_M3,
     CONF_NAME,
     CONF_OTP,
@@ -66,9 +74,15 @@ from .const import (
     CONF_PASSWORD,
     CONF_PEOPLE,
     CONF_PRICE_EUR_KWH,
+    CONF_TERM_FIJO_EUR_DIA,
     CONF_TOKEN,
+    COST_MODE_ADVANCED,
+    COST_MODE_SIMPLE,
     DEFAULT_AREA_M2,
+    DEFAULT_DESCUENTO_PCT,
     DEFAULT_HDD_BASE_C,
+    DEFAULT_IEH_EUR_KWH,
+    DEFAULT_IVA_PCT,
     DEFAULT_KWH_PER_M3,
     DEFAULT_NAME,
     DOMAIN,
@@ -187,8 +201,25 @@ def _cost_fields(
     *,
     kwh_per_m3: float = DEFAULT_KWH_PER_M3,
     price: float = 0.07,
+    mode: str = COST_MODE_SIMPLE,
 ) -> dict:
+    """Mode picker + the two fields that exist in *both* modes.
+
+    Same shape as v0.2.4 plus the new mode dropdown on top — keeps
+    existing entries auto-migrating into the simple branch when the
+    mode key is missing from ``entry.options``.
+    """
     return {
+        vol.Required(CONF_COST_MODE, default=mode): SelectSelector(
+            SelectSelectorConfig(
+                options=[
+                    {"value": COST_MODE_SIMPLE, "label": "Modo sencillo"},
+                    {"value": COST_MODE_ADVANCED, "label": "Modo avanzado"},
+                ],
+                mode=SelectSelectorMode.LIST,
+                translation_key="cost_mode",
+            )
+        ),
         vol.Required(CONF_KWH_PER_M3, default=kwh_per_m3): NumberSelector(
             NumberSelectorConfig(
                 min=_KWH_PER_M3_MIN,
@@ -203,6 +234,53 @@ def _cost_fields(
                 max=_PRICE_MAX,
                 step="any",
                 mode=NumberSelectorMode.BOX,
+            )
+        ),
+    }
+
+
+def _advanced_cost_fields(
+    *,
+    fijo_dia: float = 0.0,
+    alquiler_mes: float = 0.0,
+    ieh_kwh: float = DEFAULT_IEH_EUR_KWH,
+    iva_pct: float = DEFAULT_IVA_PCT,
+    desc_pct: float = DEFAULT_DESCUENTO_PCT,
+) -> dict:
+    """Five extra fields shown only in advanced mode.
+
+    Defaults track 2026 Endesa "Tarifa One Gas" RL.2 + reduced 10 % IVA.
+    User overrides if their commercializadora differs.
+    """
+    return {
+        vol.Required(CONF_TERM_FIJO_EUR_DIA, default=fijo_dia): NumberSelector(
+            NumberSelectorConfig(
+                min=0.0, max=5.0, step="any", mode=NumberSelectorMode.BOX,
+                unit_of_measurement="€/día",
+            )
+        ),
+        vol.Required(CONF_ALQUILER_EUR_MES, default=alquiler_mes): NumberSelector(
+            NumberSelectorConfig(
+                min=0.0, max=20.0, step="any", mode=NumberSelectorMode.BOX,
+                unit_of_measurement="€/mes",
+            )
+        ),
+        vol.Required(CONF_IEH_EUR_KWH, default=ieh_kwh): NumberSelector(
+            NumberSelectorConfig(
+                min=0.0, max=0.05, step="any", mode=NumberSelectorMode.BOX,
+                unit_of_measurement="€/kWh",
+            )
+        ),
+        vol.Required(CONF_IVA_PCT, default=iva_pct): NumberSelector(
+            NumberSelectorConfig(
+                min=0.0, max=30.0, step=0.5, mode=NumberSelectorMode.BOX,
+                unit_of_measurement="%",
+            )
+        ),
+        vol.Required(CONF_DESCUENTO_PCT, default=desc_pct): NumberSelector(
+            NumberSelectorConfig(
+                min=0.0, max=100.0, step=1, mode=NumberSelectorMode.BOX,
+                unit_of_measurement="%",
             )
         ),
     }
@@ -299,17 +377,47 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_cost(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Step 3 — cost parameters (only when enable_cost was ticked)."""
+        """Step 3 — pick cost mode + the two universal fields.
+
+        Simple mode finishes here (the two fields are everything it
+        needs). Advanced mode passes through to ``async_step_cost_advanced``
+        for the five extra fields (fijo, alquiler, IEH, IVA, descuento).
+        """
         if user_input is not None:
+            mode = user_input.get(CONF_COST_MODE) or COST_MODE_SIMPLE
             self._cost_params = {
+                CONF_COST_MODE: mode,
                 CONF_KWH_PER_M3: float(user_input[CONF_KWH_PER_M3]),
                 CONF_PRICE_EUR_KWH: float(user_input[CONF_PRICE_EUR_KWH]),
             }
+            if mode == COST_MODE_ADVANCED:
+                return await self.async_step_cost_advanced()
             return await self._create_entry()
 
         return self.async_show_form(
             step_id="cost",
             data_schema=vol.Schema(_cost_fields()),
+        )
+
+    async def async_step_cost_advanced(
+        self, user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Step 3b — advanced-mode extras (fijo, alquiler, IEH, IVA, desc)."""
+        if user_input is not None:
+            self._cost_params.update(
+                {
+                    CONF_TERM_FIJO_EUR_DIA: float(user_input[CONF_TERM_FIJO_EUR_DIA]),
+                    CONF_ALQUILER_EUR_MES: float(user_input[CONF_ALQUILER_EUR_MES]),
+                    CONF_IEH_EUR_KWH: float(user_input[CONF_IEH_EUR_KWH]),
+                    CONF_IVA_PCT: float(user_input[CONF_IVA_PCT]),
+                    CONF_DESCUENTO_PCT: float(user_input[CONF_DESCUENTO_PCT]),
+                }
+            )
+            return await self._create_entry()
+
+        return self.async_show_form(
+            step_id="cost_advanced",
+            data_schema=vol.Schema(_advanced_cost_fields()),
         )
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
@@ -544,6 +652,9 @@ class MadrilenaGasOptionsFlow(config_entries.OptionsFlow):
             if acs_val and float(acs_val) > 0:
                 self._pending[CONF_ACS_M3_PER_PERSON_DAY] = float(acs_val)
             if self._pending[CONF_ENABLE_COST]:
+                self._pending[CONF_COST_MODE] = (
+                    user_input.get(CONF_COST_MODE) or COST_MODE_SIMPLE
+                )
                 self._pending[CONF_KWH_PER_M3] = float(user_input.get(CONF_KWH_PER_M3, DEFAULT_KWH_PER_M3))
                 self._pending[CONF_PRICE_EUR_KWH] = float(user_input.get(CONF_PRICE_EUR_KWH, 0.07))
             self._toggle_on_autopilot = new_autopilot and not previous_autopilot
@@ -552,7 +663,7 @@ class MadrilenaGasOptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_areas()
             # No climates selected → drop any stale per-zone areas.
             self._pending[CONF_CLIMATE_AREAS_M2] = {}
-            return await self._maybe_step_autopilot_then_finish()
+            return await self._maybe_step_cost_advanced_then_finish()
 
         schema = vol.Schema(
             {
@@ -568,6 +679,7 @@ class MadrilenaGasOptionsFlow(config_entries.OptionsFlow):
                 **_cost_fields(
                     kwh_per_m3=float(merged.get(CONF_KWH_PER_M3, DEFAULT_KWH_PER_M3)),
                     price=float(merged.get(CONF_PRICE_EUR_KWH, 0.07)),
+                    mode=str(merged.get(CONF_COST_MODE) or COST_MODE_SIMPLE),
                 ),
                 vol.Required(
                     CONF_AUTOPILOT_ENABLED,
@@ -590,13 +702,49 @@ class MadrilenaGasOptionsFlow(config_entries.OptionsFlow):
                 eid: float(user_input.get(eid, DEFAULT_AREA_M2) or DEFAULT_AREA_M2)
                 for eid in entities
             }
-            return await self._maybe_step_autopilot_then_finish()
+            return await self._maybe_step_cost_advanced_then_finish()
 
         return self.async_show_form(
             step_id="areas",
             data_schema=_areas_schema(entities, current_areas),
             description_placeholders={"count": str(len(entities))},
         )
+
+    async def async_step_cost_advanced(
+        self, user_input: dict[str, Any] | None = None,
+    ) -> FlowResult:
+        """Advanced-mode extras editable post-install (mirrors ConfigFlow)."""
+        merged = {**self._entry.data, **self._entry.options}
+
+        if user_input is not None:
+            self._pending[CONF_TERM_FIJO_EUR_DIA] = float(user_input[CONF_TERM_FIJO_EUR_DIA])
+            self._pending[CONF_ALQUILER_EUR_MES] = float(user_input[CONF_ALQUILER_EUR_MES])
+            self._pending[CONF_IEH_EUR_KWH] = float(user_input[CONF_IEH_EUR_KWH])
+            self._pending[CONF_IVA_PCT] = float(user_input[CONF_IVA_PCT])
+            self._pending[CONF_DESCUENTO_PCT] = float(user_input[CONF_DESCUENTO_PCT])
+            return await self._maybe_step_autopilot_then_finish()
+
+        return self.async_show_form(
+            step_id="cost_advanced",
+            data_schema=vol.Schema(
+                _advanced_cost_fields(
+                    fijo_dia=float(merged.get(CONF_TERM_FIJO_EUR_DIA) or 0.0),
+                    alquiler_mes=float(merged.get(CONF_ALQUILER_EUR_MES) or 0.0),
+                    ieh_kwh=float(merged.get(CONF_IEH_EUR_KWH) or DEFAULT_IEH_EUR_KWH),
+                    iva_pct=float(merged.get(CONF_IVA_PCT) or DEFAULT_IVA_PCT),
+                    desc_pct=float(merged.get(CONF_DESCUENTO_PCT) or DEFAULT_DESCUENTO_PCT),
+                )
+            ),
+        )
+
+    async def _maybe_step_cost_advanced_then_finish(self) -> FlowResult:
+        """Route to the advanced-cost step when needed; else continue."""
+        if (
+            self._pending.get(CONF_ENABLE_COST)
+            and self._pending.get(CONF_COST_MODE) == COST_MODE_ADVANCED
+        ):
+            return await self.async_step_cost_advanced()
+        return await self._maybe_step_autopilot_then_finish()
 
     async def async_step_autopilot(
         self, user_input: dict[str, Any] | None = None,

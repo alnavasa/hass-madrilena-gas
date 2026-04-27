@@ -77,6 +77,41 @@ def daily_to_cumulative_streams(
     return total_stream, acs_stream, heating_stream
 
 
+def daily_to_cost_stream(
+    distributions: list[DistributionResult],
+    *,
+    tz: ZoneInfo,
+    cost_per_m3: float,
+    cost_per_day: float,
+) -> list[tuple[datetime, float]]:
+    """Build a cumulative EUR stream parallel to the m³ streams.
+
+    Each civil day's cost is ``daily_m3 × cost_per_m3 + cost_per_day``.
+    The fixed-per-day component (Spanish *término fijo* + meter rental)
+    accrues even on zero-consumption days, which matches how the bill
+    actually works — you pay the standing charge regardless of whether
+    you turned the boiler on. ``cost_per_day = 0`` collapses cleanly to
+    the simple ``€/m³`` model.
+    """
+    if not distributions:
+        return []
+
+    daily_m3: dict[date, float] = {}
+    for dist in distributions:
+        for share in dist.daily:
+            daily_m3[share.day] = daily_m3.get(share.day, 0.0) + share.total_m3
+
+    days = sorted(daily_m3.keys())
+    stream: list[tuple[datetime, float]] = []
+    cum = 0.0
+    for d in days:
+        local_midnight = datetime.combine(d, time(0, 0), tzinfo=tz)
+        utc_midnight = local_midnight.astimezone(timezone.utc)
+        cum += daily_m3[d] * cost_per_m3 + cost_per_day
+        stream.append((utc_midnight, round(cum, 4)))
+    return stream
+
+
 def statistic_id(suffix: str, meter_id: str) -> str:
     """Build the recorder statistic_id used by the Energy dashboard.
 

@@ -219,7 +219,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # notification with the bookmarklet ready to copy. Once the first
     # POST binds a meter id this branch stops firing on restart, so HA
     # reboots don't re-spam the notification.
-    if not entry.data.get(CONF_METER_ID):
+    # Skip when autopilot is on — the user opted out of the manual flow,
+    # the first tick will bind the meter automatically.
+    if not entry.data.get(CONF_METER_ID) and not autopilot_enabled:
         await _publish_bookmarklet_notification(hass, entry)
 
     if autopilot is not None:
