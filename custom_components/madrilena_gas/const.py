@@ -194,6 +194,26 @@ AUTOPILOT_POLL_INTERVAL = timedelta(minutes=40)
 #: Avoids hammering the portal during outages.
 AUTOPILOT_BACKOFF_INTERVAL = timedelta(minutes=10)
 
+#: Timezone the Madrileña portal "lives in". Empirically (v0.2.6 in
+#: production) the session+trusted-device cookies expire at
+#: 00:00 Spain time — two consecutive nights in a row, the autopilot
+#: lost its session somewhere between 00:00 and 00:50 Madrid local.
+#: This drives the pre/post-midnight defensive refresh ticks.
+AUTOPILOT_PORTAL_TZ = "Europe/Madrid"
+
+#: Pre-midnight defensive refresh time (Europe/Madrid). The autopilot
+#: forces a ``begin_login`` here to (a) capture the cookie state right
+#: before the suspected reset and (b) on the off-chance the TTL is just
+#: idle-rolling, push it forward.
+AUTOPILOT_PRE_MIDNIGHT = (23, 55)  # (hour, minute)
+
+#: Post-midnight defensive refresh time (Europe/Madrid). The autopilot
+#: forces a ``begin_login`` here to test whether the trusted-device
+#: cookie survived the midnight reset. If yes → silent reauth, fresh
+#: session for the next 24h. If no → reauth notification (same outcome
+#: as the broken state today, just at a more diagnostic moment).
+AUTOPILOT_POST_MIDNIGHT = (0, 5)  # (hour, minute)
+
 #: Public base URL of the Oficina Virtual. Used by the autopilot client
 #: only — the bookmarklet flow doesn't need it (the user's browser
 #: already sits on the right origin).

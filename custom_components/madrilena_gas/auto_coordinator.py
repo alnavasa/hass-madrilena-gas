@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
@@ -35,6 +36,9 @@ from homeassistant.core import HomeAssistant
 from .const import (
     AUTOPILOT_BACKOFF_INTERVAL,
     AUTOPILOT_POLL_INTERVAL,
+    AUTOPILOT_PORTAL_TZ,
+    AUTOPILOT_POST_MIDNIGHT,
+    AUTOPILOT_PRE_MIDNIGHT,
     DOMAIN,
 )
 from .coordinator import MadrilenaGasCoordinator
@@ -52,6 +56,24 @@ from .secrets_store import CredentialsStore, SessionStore
 from .store import ReadingStore
 
 _LOGGER = logging.getLogger(__name__)
+
+_PORTAL_TZ = ZoneInfo(AUTOPILOT_PORTAL_TZ)
+_PRE_MIDNIGHT_LOCAL = time(*AUTOPILOT_PRE_MIDNIGHT)
+_POST_MIDNIGHT_LOCAL = time(*AUTOPILOT_POST_MIDNIGHT)
+
+
+def _seconds_until_local(now_utc: datetime, local_target: time, tz: ZoneInfo) -> float:
+    """Seconds from ``now_utc`` to the next occurrence of ``local_target`` in ``tz``.
+
+    DST-safe: zoneinfo handles the spring/autumn shifts when computing
+    the local datetime. If the target time has already passed today
+    locally, we roll over to tomorrow.
+    """
+    now_local = now_utc.astimezone(tz)
+    today_target = datetime.combine(now_local.date(), local_target, tzinfo=tz)
+    if today_target <= now_local:
+        today_target += timedelta(days=1)
+    return (today_target - now_local).total_seconds()
 
 
 class AutoFetchCoordinator:
@@ -168,12 +190,40 @@ class AutoFetchCoordinator:
                 )
                 interval = AUTOPILOT_BACKOFF_INTERVAL
 
+            # The next sleep is capped by whichever comes first: the
+            # normal poll interval, or the next pre/post-midnight
+            # defensive refresh tick. The midnight ticks exist because
+            # the Madrileña portal empirically resets sessions at 00:00
+            # Spain time (see docs/v0.2.7 notes) — by the next normal
+            # poll at 23:54 + 40 min = 00:34 the cookie is dead and we
+            # can't silently re-login because the trusted-device cookie
+            # also got reset, forcing MFA. The defensive refresh races
+            # the reset (23:55) and re-tests trust right after (00:05).
+            now_utc = datetime.now(UTC)
+            seconds_to_pre = _seconds_until_local(
+                now_utc, _PRE_MIDNIGHT_LOCAL, _PORTAL_TZ,
+            )
+            seconds_to_post = _seconds_until_local(
+                now_utc, _POST_MIDNIGHT_LOCAL, _PORTAL_TZ,
+            )
+            if seconds_to_pre < seconds_to_post:
+                seconds_to_special = seconds_to_pre
+                special_kind = "pre-midnight"
+            else:
+                seconds_to_special = seconds_to_post
+                special_kind = "post-midnight"
+
+            sleep_seconds = min(interval.total_seconds(), seconds_to_special)
+            fires_special = sleep_seconds >= seconds_to_special - 1.0
+
             try:
                 await asyncio.wait_for(
                     self._stop.wait(),
-                    timeout=interval.total_seconds(),
+                    timeout=sleep_seconds,
                 )
             except TimeoutError:
+                if fires_special:
+                    await self._special_refresh(special_kind)
                 continue
 
     async def _tick(self) -> None:
@@ -255,6 +305,103 @@ class AutoFetchCoordinator:
             self.entry.entry_id,
         )
         return new_payload
+
+    # ------------------------------------------------------------------
+    # Pre/post-midnight defensive refresh (v0.2.7)
+    # ------------------------------------------------------------------
+
+    async def _special_refresh(self, kind: str) -> None:
+        """Force a fresh ``begin_login`` to defend against the midnight reset.
+
+        Two firings per day, in :data:`_PORTAL_TZ`:
+
+        * **23:55 (pre-midnight)** — captures the cookie state and
+          re-validates trust *before* the suspected reset. If the
+          server's TTL is sliding (unlikely given the empirical pattern
+          but worth a try), this push extends the session past midnight.
+        * **00:05 (post-midnight)** — the real test. If the
+          trusted-device cookie survived the reset, ``begin_login``
+          returns ``needs_otp=False`` and we save a fresh session that
+          will live until the *next* midnight. If MFA is now required,
+          the trusted-device cookie also resets at midnight and we
+          surface reauth (same outcome the broken state produces today,
+          but at a more predictable hour).
+
+        Diagnostic logging captures cookie *names* (never values) before
+        and after each call so we can correlate which cookies survive
+        the reset over multiple nights.
+        """
+        if self._client is None or self._http is None:
+            return
+
+        jar_pre = sorted(c.key for c in self._http.cookie_jar)
+        _LOGGER.info(
+            "[%s] %s refresh: starting — jar pre=%d cookies=%s session_store=%s",
+            self.entry.entry_id, kind, len(jar_pre), jar_pre,
+            "present" if self.session_store.has_session else "empty",
+        )
+
+        creds = CredentialsStore(self.hass, self.entry.entry_id)
+        await creds.async_load()
+        if not creds.has_credentials:
+            _LOGGER.warning(
+                "[%s] %s refresh: skipped — no stored credentials",
+                self.entry.entry_id, kind,
+            )
+            return
+
+        try:
+            ctx = await self._client.begin_login(creds.dni, creds.password)
+        except (InvalidCredentials, InvalidOtp) as exc:
+            _LOGGER.warning(
+                "[%s] %s refresh: login rejected — %s. Triggering reauth.",
+                self.entry.entry_id, kind, exc,
+            )
+            await self.session_store.async_clear()
+            await self._trigger_reauth()
+            return
+        except MadrilenaClientError:
+            _LOGGER.exception(
+                "[%s] %s refresh: client error — leaving normal poll loop intact",
+                self.entry.entry_id, kind,
+            )
+            return
+        except Exception:
+            _LOGGER.exception(
+                "[%s] %s refresh: unexpected error — leaving normal poll loop intact",
+                self.entry.entry_id, kind,
+            )
+            return
+
+        jar_post = sorted(c.key for c in self._http.cookie_jar)
+        _LOGGER.info(
+            "[%s] %s refresh: begin_login done — needs_otp=%s jar post=%d cookies=%s",
+            self.entry.entry_id, kind, ctx.needs_otp, len(jar_post), jar_post,
+        )
+
+        if ctx.needs_otp:
+            _LOGGER.warning(
+                "[%s] %s refresh: portal demands MFA — trusted-device cookie "
+                "did NOT survive the boundary. Triggering reauth.",
+                self.entry.entry_id, kind,
+            )
+            await self.session_store.async_clear()
+            await self._trigger_reauth()
+            return
+
+        new_payload = ctx.session_payload
+        if new_payload is None:
+            _LOGGER.warning(
+                "[%s] %s refresh: begin_login returned no payload (no MFA, "
+                "no session) — unexpected, ignoring",
+                self.entry.entry_id, kind,
+            )
+            return
+        await self.session_store.async_save_payload(new_payload.to_dict())
+        _LOGGER.info(
+            "[%s] %s refresh: OK — fresh session persisted",
+            self.entry.entry_id, kind,
+        )
 
     # ------------------------------------------------------------------
     # Re-auth glue
