@@ -63,40 +63,7 @@
     },
     "error": {
       "missing_ha_url": "An HTTPS URL is required so the bookmarklet can POST from your browser.",
-      "invalid_ha_url": "The URL must start with http:// or https://. HTTPS recommended — browsers block fetch HTTP from the portal.",
-      "missing_credentials": "DNI and password are required to log in to the Oficina Virtual.",
-      "missing_otp": "Enter the OTP code you received by email.",
-      "invalid_otp": "The OTP is incorrect or has already expired. The portal sends a fresh code every time you press \"Submit\".",
-      "login_failed": "The portal rejected the credentials or returned an unexpected error. Check DNI and password.",
-      "client_not_implemented": "The Madrileña HTTP client is not yet implemented (autopilot mode is in SCAFFOLD pending the login HAR capture). Use the manual bookmarklet meanwhile."
-    },
-    "abort": {
-      "reauth_not_supported": "This integration does not require re-authentication because it is in bookmarklet mode (the session lives in your browser). If you need to rotate the token, delete the integration and add it again.",
-      "reauth_successful": "Session refreshed. The autopilot will resume fetching on the next cycle."
-    },
-    "step": {
-      "reauth_confirm": {
-        "title": "Re-login to Madrileña — step 1/2",
-        "description": "The portal will send an OTP to your email **as soon as you press \"Submit\"**. Have your inbox open to type the code in the next step (the OTP expires in a few minutes).",
-        "data": {
-          "dni": "DNI / NIE",
-          "password": "Oficina Virtual password"
-        },
-        "data_description": {
-          "dni": "Same DNI you use to log in at ov.madrilena.es.",
-          "password": "Stored encrypted by the HA filesystem (same level as every other integration with login)."
-        }
-      },
-      "otp": {
-        "title": "Re-login to Madrileña — step 2/2",
-        "description": "Enter the OTP you just received by email. If it doesn't arrive, go back and re-submit step 1 — every attempt sends a fresh code.",
-        "data": {
-          "otp": "OTP code received by email"
-        },
-        "data_description": {
-          "otp": "Usually a 6-digit number. You have a few minutes before it expires."
-        }
-      }
+      "invalid_ha_url": "The URL must start with http:// or https://. HTTPS recommended — browsers block fetch HTTP from the portal."
     }
   },
   "options": {
@@ -105,18 +72,6 @@
         "title": "Floor area per zone",
         "description": "Enter m² for each selected zone to weight the distribution. Leave `1` to keep equal weights (zone-count mode).",
         "data_description": {}
-      },
-      "autopilot": {
-        "title": "Autopilot — portal credentials",
-        "description": "You have enabled **autopilot** mode (experimental). For HA to log into ov.madrilena.es on its own it needs your DNI and password.\n\nCredentials are stored locally under HA `.storage` folder (same protection level as every other HA integration with a login).\n\nAfter saving this form a notification will appear asking you to press \"Reconfigure\" — that click triggers the OTP email **right then**, so it doesn't expire while you wait.",
-        "data": {
-          "dni": "DNI / NIE",
-          "password": "Oficina Virtual password"
-        },
-        "data_description": {
-          "dni": "Same DNI you use at ov.madrilena.es.",
-          "password": "Stored alongside the rest of the integration configuration."
-        }
       },
       "init": {
         "title": "Madrileña Red de Gas",
@@ -130,8 +85,7 @@
           "enable_cost": "Compute price (€) on top of consumption (m³)",
           "cost_mode": "Cost calculation mode",
           "kwh_per_m3": "Conversion factor m³ → kWh (HHV)",
-          "price_eur_kwh": "Variable-term price €/kWh",
-          "autopilot_enabled": "Autopilot — fetch readings automatically (experimental)"
+          "price_eur_kwh": "Variable-term price €/kWh"
         },
         "data_description": {
           "people": "Change this when someone moves in or out. DHW consumption is recalculated backwards on the next refresh.",
@@ -142,8 +96,7 @@
           "enable_cost": "If you disable it, the cost entities disappear when the integration reloads (the m³ sensors continue as before).",
           "cost_mode": "**Simple** = `price × kWh × m³`, no VAT or fixed term (good for trend). **Advanced** = full Spanish gas-bill formula (variable + fixed + rental + IEH + discount + VAT); the next step asks for the five extra fields.",
           "kwh_per_m3": "Appears on your gas bill as \"Conversion coefficient\". Spain ~11.70.",
-          "price_eur_kwh": "**Simple**: all-in price. **Advanced**: the *Energy Term* price as printed on the bill, without VAT.",
-          "autopilot_enabled": "**EXPERIMENTAL — implementation pending.** When enabled, HA logs in on its own and fetches /consumos every ~40 min. On first activation it asks for DNI + password + an OTP by email. When the session eventually lapses it notifies you to re-enter the OTP. If left disabled (default), everything works exactly like v0.1.x with the manual bookmarklet."
+          "price_eur_kwh": "**Simple**: all-in price. **Advanced**: the *Energy Term* price as printed on the bill, without VAT."
         }
       },
       "cost_advanced": {
@@ -164,9 +117,6 @@
           "descuento_pct": "Sum of all promotional discounts applied to the variable term (the \"-10 %\" lines from Endesa's Tarifa One, etc.). Use `20` if you have two stacked -10 % discounts."
         }
       }
-    },
-    "error": {
-      "missing_credentials": "DNI and password are required to enable autopilot."
     }
   },
   "entity": {

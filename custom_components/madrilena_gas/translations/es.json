@@ -63,40 +63,7 @@
     },
     "error": {
       "missing_ha_url": "Hace falta una URL HTTPS para que el bookmarklet pueda postear desde tu navegador.",
-      "invalid_ha_url": "La URL debe empezar por http:// o https://. Recomendado HTTPS — los navegadores bloquean fetch HTTP desde el portal.",
-      "missing_credentials": "Hace falta DNI y contraseña para iniciar sesión en la Oficina Virtual.",
-      "missing_otp": "Introduce el código OTP que has recibido por email.",
-      "invalid_otp": "El código OTP no es correcto o ya ha caducado. El portal envía un código nuevo cada vez que pulsas \"Iniciar sesión\".",
-      "login_failed": "El portal rechazó las credenciales o respondió con un error inesperado. Comprueba DNI y contraseña.",
-      "client_not_implemented": "El cliente HTTP de Madrileña aún no está implementado (modo autopilot está en SCAFFOLD pendiente del HAR de login). Usa el bookmarklet manual mientras tanto."
-    },
-    "abort": {
-      "reauth_not_supported": "Esta integración no requiere re-autenticación porque está en modo bookmarklet (la sesión vive en tu navegador). Si necesitas rotar el token, borra la integración y vuelve a añadirla.",
-      "reauth_successful": "Sesión renovada correctamente. El autopilot reanudará la descarga en el próximo ciclo."
-    },
-    "step": {
-      "reauth_confirm": {
-        "title": "Re-loguear en Madrileña — paso 1/2",
-        "description": "El portal va a enviar un OTP a tu email **en cuanto pulses \"Enviar\"**. Ten el correo a mano para introducirlo en el siguiente paso (el OTP caduca en pocos minutos).",
-        "data": {
-          "dni": "DNI / NIE",
-          "password": "Contraseña de la Oficina Virtual"
-        },
-        "data_description": {
-          "dni": "El mismo DNI con el que inicias sesión en ov.madrilena.es.",
-          "password": "Se almacena cifrada por el sistema de ficheros de HA (mismo nivel que el resto de integraciones con login)."
-        }
-      },
-      "otp": {
-        "title": "Re-loguear en Madrileña — paso 2/2",
-        "description": "Introduce el código OTP que acabas de recibir por email. Si no llega, vuelve atrás y pulsa de nuevo en el paso 1 — cada intento envía un código nuevo.",
-        "data": {
-          "otp": "Código OTP recibido por email"
-        },
-        "data_description": {
-          "otp": "Suele ser un número de 6 dígitos. Tienes pocos minutos antes de que caduque."
-        }
-      }
+      "invalid_ha_url": "La URL debe empezar por http:// o https://. Recomendado HTTPS — los navegadores bloquean fetch HTTP desde el portal."
     }
   },
   "options": {
@@ -105,18 +72,6 @@
         "title": "Metros² por zona",
         "description": "Indica los m² de cada zona seleccionada para ponderar el reparto. Deja `1` para mantener pesos iguales (modo cuenta-zonas).",
         "data_description": {}
-      },
-      "autopilot": {
-        "title": "Autopilot — credenciales del portal",
-        "description": "Has activado el modo **autopilot** (experimental). Para que HA pueda iniciar sesión en ov.madrilena.es por su cuenta hace falta el DNI y la contraseña.\n\nLas credenciales se guardan localmente en la carpeta `.storage` de HA (mismo nivel de protección que el resto de integraciones de HA con login).\n\nAl guardar este formulario aparecerá una notificación pidiéndote pulsar \"Reconfigurar\" — ese clic dispara el envío del OTP por email **en ese momento**, así no caduca esperando.",
-        "data": {
-          "dni": "DNI / NIE",
-          "password": "Contraseña de la Oficina Virtual"
-        },
-        "data_description": {
-          "dni": "El mismo DNI con el que entras en ov.madrilena.es.",
-          "password": "Se almacena junto al resto de la configuración de la integración."
-        }
       },
       "init": {
         "title": "Madrileña Red de Gas",
@@ -130,8 +85,7 @@
           "enable_cost": "Calcular precio (€) además del consumo (m³)",
           "cost_mode": "Modo de cálculo de coste",
           "kwh_per_m3": "Factor de conversión m³ → kWh (PCS)",
-          "price_eur_kwh": "Precio €/kWh del término variable",
-          "autopilot_enabled": "Autopilot — descargar lecturas automáticamente (experimental)"
+          "price_eur_kwh": "Precio €/kWh del término variable"
         },
         "data_description": {
           "people": "Cambia este valor cuando alguien se mude o llegue. Recalcula el consumo de ACS hacia atrás en el siguiente refresco.",
@@ -142,8 +96,7 @@
           "enable_cost": "Si lo desactivas, las entidades de coste desaparecen al recargar la integración (los sensores de m³ siguen igual).",
           "cost_mode": "**Sencillo** = `precio × kWh × m³`, sin IVA ni término fijo (sirve para tendencia). **Avanzado** = fórmula completa de la factura española (variable + fijo + alquiler + IEH + descuento + IVA), te pedirá los cinco campos en el siguiente paso.",
           "kwh_per_m3": "Aparece en tu factura de gas como \"Coeficiente de conversión\". España ~11,70.",
-          "price_eur_kwh": "**Sencillo**: precio \"todo incluido\". **Avanzado**: el precio del *Término Energía Gas* sin IVA, tal cual lo lees en la factura.",
-          "autopilot_enabled": "**EXPERIMENTAL — pendiente de implementación.** Si lo activas, HA iniciará sesión por su cuenta y descargará /consumos cada ~40 min. La primera vez que se active te pedirá DNI + contraseña + un OTP por email. Cuando caduque la sesión te notificará para que reintroduzcas el OTP. Si lo dejas desactivado (default), todo funciona como en v0.1.x con el bookmarklet manual."
+          "price_eur_kwh": "**Sencillo**: precio \"todo incluido\". **Avanzado**: el precio del *Término Energía Gas* sin IVA, tal cual lo lees en la factura."
         }
       },
       "cost_advanced": {
@@ -164,9 +117,6 @@
           "descuento_pct": "Suma todos los descuentos promocionales que se aplican al término variable (los \"-10 %\" de Tarifa One de Endesa, etc.). Pon `20` si tienes dos descuentos del 10 %."
         }
       }
-    },
-    "error": {
-      "missing_credentials": "Hace falta DNI y contraseña para activar el autopilot."
     }
   },
   "entity": {
