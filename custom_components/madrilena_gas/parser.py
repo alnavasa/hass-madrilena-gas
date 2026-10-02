@@ -73,15 +73,15 @@ def parse_pages(pages_html: list[str]) -> list[Reading]:
 
 
 def _parse_es_number(s: str) -> float | None:
-    """Parse a Spanish-formatted number string. ``"1.465"`` → 1465.0."""
+    """Parse a Spanish-formatted number string. ``"1.234"`` → 1234.0."""
     s = s.strip()
     if not s:
         return None
     if "," in s:
-        # Has decimal part: "1.465,32" → "1465.32"
+        # Has decimal part: "1.234,56" → "1234.56"
         s = s.replace(".", "").replace(",", ".")
     else:
-        # Pure integer with possible thousands separator: "1.465" → "1465"
+        # Pure integer with possible thousands separator: "1.234" → "1234"
         s = s.replace(".", "")
     try:
         return float(s)

@@ -21,10 +21,15 @@ from __future__ import annotations
 import logging
 
 from homeassistant.components.recorder.statistics import async_add_external_statistics
-from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.models import (
+    StatisticData,
+    StatisticMeanType,
+    StatisticMetaData,
+)
 from homeassistant.const import UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+from homeassistant.util.unit_conversion import VolumeConverter
 
 from .const import DOMAIN
 from .models import DistributionResult
@@ -70,10 +75,11 @@ async def push_distribution_streams(
     if not total_stream:
         return
 
-    streams: list[tuple[str, list, str, str]] = [
-        ("total", total_stream, "Consumo total", UnitOfVolume.CUBIC_METERS),
-        ("acs", acs_stream, "ACS (agua caliente)", UnitOfVolume.CUBIC_METERS),
-        ("heating", heating_stream, "Calefacción", UnitOfVolume.CUBIC_METERS),
+    volume = (UnitOfVolume.CUBIC_METERS, VolumeConverter.UNIT_CLASS)
+    streams: list[tuple[str, list, str, tuple[str, str | None]]] = [
+        ("total", total_stream, "Consumo total", volume),
+        ("acs", acs_stream, "ACS (agua caliente)", volume),
+        ("heating", heating_stream, "Calefacción", volume),
     ]
 
     push_cost = cost_per_m3 is not None and (cost_per_m3 > 0 or cost_per_day > 0)
@@ -85,18 +91,19 @@ async def push_distribution_streams(
             cost_per_day=float(cost_per_day or 0.0),
         )
         if cost_stream:
-            streams.append(("cost", cost_stream, "Coste total", "EUR"))
+            streams.append(("cost", cost_stream, "Coste total", ("EUR", None)))
 
-    for suffix, stream, friendly, unit in streams:
+    for suffix, stream, friendly, (unit, unit_class) in streams:
         if not stream:
             continue
         sid = statistic_id(suffix, meter_id)
         meta = StatisticMetaData(
-            has_mean=False,
+            mean_type=StatisticMeanType.NONE,
             has_sum=True,
             name=f"{install_name} — {friendly}",
             source=DOMAIN,
             statistic_id=sid,
+            unit_class=unit_class,
             unit_of_measurement=unit,
         )
         rows = [
